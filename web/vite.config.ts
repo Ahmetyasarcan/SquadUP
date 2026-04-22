@@ -6,11 +6,10 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      // Proxy /api requests to Flask backend during development
       '/api': {
         target: 'http://localhost:5000',
         changeOrigin: true,
-      },
-    },
-  },
+      }
+    }
+  }
 })

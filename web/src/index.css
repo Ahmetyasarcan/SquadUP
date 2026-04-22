@@ -1,30 +1,107 @@
-/* index.css — Global styles for SquadUp web app */
-*, *::before, *::after { box-sizing: border-box; }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --primary: #6366f1;
-  --primary-dark: #4338ca;
-  --surface: #f8fafc;
-  --border: #e5e7eb;
-  --text: #111827;
-  --muted: #6b7280;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: var(--surface);
-  color: var(--text);
+  font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-a { text-decoration: none; color: inherit; }
-h1, h2, h3, p { margin: 0; }
-
-input:focus, select:focus {
-  border-color: var(--primary) !important;
-  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-button:hover:not(:disabled) { filter: brightness(1.08); }
-button:disabled { opacity: 0.6; }
+::-webkit-scrollbar-track {
+  @apply bg-gray-50 dark:bg-gray-950;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-600;
+}
+
+/* Range slider styling */
+input[type=range] {
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  @apply bg-primary-600;
+  cursor: pointer;
+  margin-top: -6px;
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  @apply bg-gray-200 dark:bg-gray-800 rounded-full;
+}
+
+/* Glassmorphism utilities */
+@layer utilities {
+  .glass {
+    @apply bg-white/60 dark:bg-gray-900/60 backdrop-blur-xl border border-white/20 dark:border-gray-700/30;
+  }
+
+  .glass-strong {
+    @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-2xl border border-white/30 dark:border-gray-700/40;
+  }
+}
+
+/* Staggered animation delays for grid children */
+@layer utilities {
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.3s; }
+}
+
+/* Skeleton loading shimmer */
+.skeleton {
+  @apply relative overflow-hidden;
+  background: linear-gradient(
+    90deg,
+    theme('colors.gray.200') 0%,
+    theme('colors.gray.100') 50%,
+    theme('colors.gray.200') 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    theme('colors.gray.800') 0%,
+    theme('colors.gray.700') 50%,
+    theme('colors.gray.800') 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* Custom toast styles */
+.toast-custom {
+  @apply font-sans;
+}

@@ -44,27 +44,61 @@ def get_client() -> Client:
 def get_user_by_id(user_id: str) -> Optional[Dict]:
     """Fetch a single user by UUID. Returns None if not found."""
     client = get_client()
-    result = client.table("sqlusers").select("*").eq("id", user_id).execute()
+    result = client.table("users").select("*").eq("id", user_id).execute()
     data = result.data
     return data[0] if data else None
 
 
-def create_user(user_data: Dict) -> Dict:
+def create_user(user_data: Dict, auth_id: Optional[str] = None) -> Dict:
     """
-    Insert a new user into the sqlusers table.
-    user_data keys: name, interests, competition_level
-    Attended/joined events default to 0.
+    Insert a new user into the users table.
+    user_data keys: name, email, interests, competition_level
+    auth_id: The UUID from Supabase Auth (optional, for linking).
     """
     client = get_client()
     payload = {
         "name": user_data["name"],
+        "email": user_data.get("email"),
         "interests": user_data["interests"],
         "competition_level": user_data["competition_level"],
         "attended_events": 0,
         "joined_events": 0,
     }
-    result = client.table("sqlusers").insert(payload).execute()
+    
+    if auth_id:
+        payload["id"] = auth_id
+
+    result = client.table("users").insert(payload).execute()
     return result.data[0]
+
+
+def get_user_by_email(email: str) -> Optional[Dict]:
+    """Fetch a single user by email. Returns None if not found."""
+    client = get_client()
+    result = client.table("users").select("*").eq("email", email).execute()
+    data = result.data
+    return data[0] if data else None
+
+
+# ---------------------------------------------------------------------------
+# Auth operations (Supabase Auth Wrapper)
+# ---------------------------------------------------------------------------
+def sign_up(email: str, password: str) -> Dict:
+    """Register a new user in Supabase Auth."""
+    client = get_client()
+    return client.auth.sign_up({
+        "email": email,
+        "password": password
+    })
+
+
+def sign_in(email: str, password: str) -> Dict:
+    """Sign in a user with email and password."""
+    client = get_client()
+    return client.auth.sign_in_with_password({
+        "email": email,
+        "password": password
+    })
 
 
 def update_user_attendance(user_id: str, attended_delta: int, joined_delta: int) -> Dict:
@@ -84,7 +118,7 @@ def update_user_attendance(user_id: str, attended_delta: int, joined_delta: int)
     new_joined = user["joined_events"] + joined_delta
 
     result = (
-        client.table("sqlusers")
+        client.table("users")
         .update({"attended_events": new_attended, "joined_events": new_joined})
         .eq("id", user_id)
         .execute()
@@ -95,7 +129,7 @@ def update_user_attendance(user_id: str, attended_delta: int, joined_delta: int)
 def list_all_users() -> List[Dict]:
     """Fetch all users. Used for testing/admin."""
     client = get_client()
-    result = client.table("sqlusers").select("*").execute()
+    result = client.table("users").select("*").execute()
     return result.data
 
 

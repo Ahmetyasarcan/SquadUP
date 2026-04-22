@@ -22,6 +22,7 @@ Endpoints:
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from functools import wraps
 
 import database as db
 from scoring import create_match_scorer, DEFAULT_SCORER
@@ -37,6 +38,121 @@ CORS(app)  # Allow cross-origin requests from React web app
 def health_check():
     """Simple health endpoint to verify the API is running."""
     return jsonify({"status": "ok", "service": "SquadUp API"}), 200
+
+
+# ---------------------------------------------------------------------------
+# Auth Middleware
+# ---------------------------------------------------------------------------
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if "Authorization" in request.headers:
+            # Format: Bearer <token>
+            auth_header = request.headers["Authorization"].split(" ")
+            if len(auth_header) == 2:
+                token = auth_header[1]
+
+        if not token:
+            return jsonify({"error": "Token is missing"}), 401
+
+        try:
+            # Verify token with Supabase
+            client = db.get_client()
+            response = client.auth.get_user(token)
+            request.user = response.user
+        except Exception as e:
+            return jsonify({"error": f"Invalid token: {str(e)}"}), 401
+
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+# ---------------------------------------------------------------------------
+# Auth Endpoints
+# ---------------------------------------------------------------------------
+@app.route("/api/auth/register", methods=["POST"])
+def register():
+    """
+    POST /api/auth/register
+    Register a new user and create their profile.
+    """
+    body = request.get_json()
+    email = body.get("email")
+    password = body.get("password")
+    name = body.get("name", email.split("@")[0] if email else "User")
+    interests = body.get("interests", [])
+    competition_level = body.get("competition_level", 3)
+
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+
+    try:
+        # 1. Sign up in Supabase Auth
+        auth_response = db.sign_up(email, password)
+        if not auth_response.user:
+            return jsonify({"error": "Registration failed"}), 400
+
+        # 2. Create entry in users table
+        user_data = {
+            "name": name,
+            "email": email,
+            "interests": interests,
+            "competition_level": competition_level
+        }
+        profile = db.create_user(user_data, auth_id=auth_response.user.id)
+
+        return jsonify({
+            "message": "Registration successful",
+            "user": profile,
+            "session": {
+                "access_token": auth_response.session.access_token if auth_response.session else None,
+                "expires_in": auth_response.session.expires_in if auth_response.session else None
+            }
+        }), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    """
+    POST /api/auth/login
+    Sign in with email and password.
+    """
+    body = request.get_json()
+    email = body.get("email")
+    password = body.get("password")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+
+    try:
+        auth_response = db.sign_in(email, password)
+        
+        # Fetch profile
+        profile = db.get_user_by_id(auth_response.user.id)
+        
+        return jsonify({
+            "message": "Login successful",
+            "user": profile,
+            "session": {
+                "access_token": auth_response.session.access_token,
+                "expires_in": auth_response.session.expires_in,
+                "refresh_token": auth_response.session.refresh_token
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"error": "Invalid credentials or login failed"}), 401
+
+
+@app.route("/api/auth/me", methods=["GET"])
+@token_required
+def get_current_user():
+    """Get currently logged in user profile."""
+    profile = db.get_user_by_id(request.user.id)
+    return jsonify({"user": profile}), 200
 
 
 # ---------------------------------------------------------------------------
