@@ -150,8 +150,30 @@ def login():
 @app.route("/api/auth/me", methods=["GET"])
 @token_required
 def get_current_user():
-    """Get currently logged in user profile."""
+    """Get currently logged in user profile. Auto-creates if missing."""
     profile = db.get_user_by_id(request.user.id)
+    
+    if not profile:
+        # Lazy profile creation for users who exist in Auth but not in our users table
+        email = request.user.email
+        # Extract name from metadata or email
+        name = request.user.user_metadata.get("full_name") or \
+               request.user.user_metadata.get("name") or \
+               email.split("@")[0]
+        
+        user_data = {
+            "name": name,
+            "email": email,
+            "interests": [],
+            "competition_level": 3
+        }
+        try:
+            profile = db.create_user(user_data, auth_id=request.user.id)
+            print(f"Auto-created profile for user: {email}")
+        except Exception as e:
+            print(f"Failed to auto-create profile: {e}")
+            return jsonify({"error": "Profile could not be synchronized"}), 500
+            
     return jsonify({"user": profile}), 200
 
 
@@ -383,6 +405,92 @@ def join_activity(activity_id: str):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ---------------------------------------------------------------------------
+# Squad Endpoints (Restored)
+# ---------------------------------------------------------------------------
+@app.route("/api/squads", methods=["GET"])
+def list_squads():
+    """List all permanent squads."""
+    squads = db.list_all_squads()
+    return jsonify({"squads": squads, "count": len(squads)}), 200
+
+@app.route("/api/squads", methods=["POST"])
+@token_required
+def create_squad():
+    """Create a new squad."""
+    body = request.get_json()
+    if not body or "name" not in body or "category" not in body:
+        return jsonify({"error": "Missing required squad fields"}), 400
+        
+    try:
+        # Use auth token for creator
+        body["creator_id"] = request.user.id
+        squad = db.create_squad(body)
+        return jsonify({"squad": squad, "message": "Squad created successfully"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/squads/<squad_id>/join", methods=["POST"])
+@token_required
+def join_squad(squad_id: str):
+    """Join a permanent squad."""
+    try:
+        membership = db.join_squad(squad_id, request.user.id)
+        return jsonify({"membership": membership, "message": "Successfully joined squad"}), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---------------------------------------------------------------------------
+# Friend System Endpoints
+# ---------------------------------------------------------------------------
+@app.route("/api/users/search", methods=["GET"])
+@token_required
+def api_search_users():
+    query = request.args.get("q", "")
+    if not query:
+        return jsonify({"users": []}), 200
+    users = db.search_users(query, request.user.id)
+    return jsonify({"users": users}), 200
+
+@app.route("/api/friends", methods=["GET"])
+@token_required
+def api_get_friends():
+    friends_data = db.get_user_friends(request.user.id)
+    return jsonify(friends_data), 200
+
+@app.route("/api/friends/request", methods=["POST"])
+@token_required
+def api_send_friend_request():
+    body = request.get_json()
+    friend_id = body.get("friend_id")
+    if not friend_id:
+        return jsonify({"error": "friend_id required"}), 400
+    try:
+        data = db.send_friend_request(request.user.id, friend_id)
+        return jsonify({"message": "Friend request sent", "data": data}), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/friends/respond", methods=["POST"])
+@token_required
+def api_respond_friend_request():
+    body = request.get_json()
+    request_id = body.get("request_id")
+    status = body.get("status")
+    if not request_id or not status:
+        return jsonify({"error": "request_id and status required"}), 400
+    try:
+        data = db.respond_to_friend_request(request_id, status)
+        return jsonify({"message": "Responded to friend request", "data": data}), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------------------------
 # Entry point

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Calendar, MapPin, Users, Trophy, ArrowLeft, Share2, Clock } from 'lucide-react';
+import { Calendar, MapPin, Users, Trophy, ArrowLeft, Share2, Clock, Zap } from 'lucide-react';
 import { getActivities, joinActivity } from '../services/api';
 import { useStore } from '../store/useStore';
 import toast from 'react-hot-toast';
@@ -9,6 +9,7 @@ import Button from '../components/ui/Button';
 import StatusBadge from '../components/StatusBadge';
 import { CATEGORIES, CATEGORY_ICONS, COMPETITION_LEVELS, COMPETITION_COLORS } from '../constants/translations';
 import { formatDateTime, getRelativeTime, formatScore } from '../utils/formatters';
+import { MOCK_ACTIVITIES } from '../data/mockData';
 
 export default function ActivityDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,21 +25,31 @@ export default function ActivityDetailPage() {
       if (!id) return;
       setLoading(true);
       try {
-        // Since there's no single-activity endpoint, fetch all and find by id
         const res = await getActivities();
-        if (res.data) {
+        if (res.data && res.data.activities.length > 0) {
           const found = res.data.activities.find((a) => a.id === id);
           if (found) {
             setActivity(found);
-          } else {
-            toast.error('Aktivite bulunamadı');
-            navigate('/activities');
+            setLoading(false);
+            return;
           }
+        }
+        // Fallback: check mock data
+        const mockFound = MOCK_ACTIVITIES.find(a => a.id === id);
+        if (mockFound) {
+          setActivity(mockFound);
         } else {
-          toast.error('Yükleme hatası');
+          toast.error('Aktivite bulunamadı');
+          navigate('/activities');
         }
       } catch {
-        toast.error('Bağlantı hatası');
+        const mockFound = MOCK_ACTIVITIES.find(a => a.id === id);
+        if (mockFound) {
+          setActivity(mockFound);
+        } else {
+          toast.error('Bağlantı hatası');
+          navigate('/activities');
+        }
       } finally {
         setLoading(false);
       }
@@ -237,6 +248,44 @@ export default function ActivityDetailPage() {
                 </p>
               </div>
             )}
+
+            {/* Participants Section */}
+            <div className="mb-8">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary-500" />
+                Katılımcılar ({activity.participants?.length || count})
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                {activity.participants?.map((participant) => (
+                  <div key={participant.id} className="flex flex-col items-center gap-1 group">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-secondary-500 flex items-center justify-center text-white font-bold text-lg border-2 border-white dark:border-gray-800 shadow-sm group-hover:scale-110 transition-transform cursor-pointer relative">
+                      {participant.name.charAt(0).toUpperCase()}
+                      {/* Social Proof Badge */}
+                      {user && participant.interests.some(i => user.interests.includes(i)) && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center" title="Ortak ilgi alanı!">
+                          <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate w-14 text-center">
+                      {participant.name.split(' ')[0]}
+                    </span>
+                  </div>
+                ))}
+                {/* Empty spots */}
+                {Array.from({ length: Math.min(3, spotsLeft) }).map((_, i) => (
+                  <div key={`empty-${i}`} className="w-12 h-12 rounded-full border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-300 dark:text-gray-600">
+                    ?
+                  </div>
+                ))}
+              </div>
+              {user && activity.participants?.some(p => p.interests.some(i => user.interests.includes(i))) && (
+                <p className="mt-4 text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded-lg">
+                  <Zap className="w-3 h-3" />
+                  Bu aktivitede seninle ortak ilgi alanına sahip kişiler var!
+                </p>
+              )}
+            </div>
 
             {/* Match Score (if available) */}
             {activity.match_result && (

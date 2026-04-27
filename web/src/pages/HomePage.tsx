@@ -1,134 +1,323 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Zap, Users, TrendingUp, Shield } from 'lucide-react';
-import { UI_TEXT, CATEGORY_ICONS, CATEGORIES } from '../constants/translations';
+import { ArrowRight, Zap, Users, TrendingUp, Sparkles, Star, Shield, Trophy, Calendar, MapPin, ChevronRight } from 'lucide-react';
 import Button from '../components/ui/Button';
-
-const FEATURES = [
-  {
-    icon: <Zap className="w-6 h-6" />,
-    title: 'Akıllı Eşleştirme',
-    desc: 'İlgi alanlarınıza ve seviyenize göre puanlama algoritmasıyla size özel öneriler',
-    color: 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20',
-  },
-  {
-    icon: <Users className="w-6 h-6" />,
-    title: 'Topluluk',
-    desc: 'Yeni insanlarla tanışın, takım kurun ve birlikte eğlenceli anılar biriktirin',
-    color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20',
-  },
-  {
-    icon: <TrendingUp className="w-6 h-6" />,
-    title: 'Kişisel Gelişim',
-    desc: 'Farklı seviyelerden aktiviteler keşfet, hem öğren hem öğret',
-    color: 'text-primary-500 bg-primary-50 dark:bg-primary-900/20',
-  },
-  {
-    icon: <Shield className="w-6 h-6" />,
-    title: 'Güvenilirlik Skoru',
-    desc: 'Katıldığın etkinliklere uyduğun ölçüde güvenilirlik puanın yükselir',
-    color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20',
-  },
-];
-
-const CATEGORY_KEYS = ['sports', 'esports', 'board_games', 'outdoor'] as const;
+import { MOCK_ACTIVITIES, MOCK_SQUADS, PLATFORM_STATS } from '../data/mockData';
+import { CATEGORIES, CATEGORY_ICONS, COMPETITION_LEVELS } from '../constants/translations';
+import { formatDateTime } from '../utils/formatters';
 
 export default function HomePage() {
+  const [statsVisible, setStatsVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setStatsVisible(true), 200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Show top 3 trending activities (highest participants ratio)
+  const trendingActivities = [...MOCK_ACTIVITIES]
+    .sort((a, b) => (b.current_participants / b.max_participants) - (a.current_participants / a.max_participants))
+    .slice(0, 3);
+
+  // Show top 3 squads by members
+  const topSquads = [...MOCK_SQUADS]
+    .sort((a, b) => b.member_count - a.member_count)
+    .slice(0, 3);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-950 dark:to-gray-900">
-      {/* ── Hero ── */}
-      <section className="relative overflow-hidden py-24 px-4">
-        {/* Background blobs */}
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary-200 dark:bg-primary-900/30 rounded-full blur-3xl opacity-40 pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-blue-200 dark:bg-blue-900/20 rounded-full blur-3xl opacity-30 pointer-events-none" />
+    <div className="min-h-screen bg-dark-bg relative overflow-hidden">
+      
+      {/* Animated background gradient */}
+      <div className="absolute inset-0 bg-gradient-hero opacity-50"></div>
+      
+      {/* Floating orbs */}
+      <div className="absolute top-20 left-10 w-72 h-72 bg-primary-500/20 rounded-full blur-3xl animate-pulse-slow"></div>
+      <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary-500/20 rounded-full blur-3xl animate-pulse-slow" style={{ animationDelay: '1s' }}></div>
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-500/5 rounded-full blur-3xl"></div>
 
-        <div className="relative max-w-4xl mx-auto text-center">
-          {/* Badge */}
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-sm font-medium mb-6 border border-primary-100 dark:border-primary-800">
-            <Zap className="w-3.5 h-3.5" /> Yapay zekasız, saf fonksiyonel eşleştirme
-          </span>
-
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-gray-900 dark:text-white mb-6 leading-tight tracking-tight">
-            Aktivite Bul,{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-blue-500">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        
+        {/* Hero Section */}
+        <div className="text-center mb-20">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-primary-400/30 
+                        rounded-full mb-6 shadow-glow-cyan">
+            <Sparkles className="w-4 h-4 text-primary-400" />
+            <span className="text-sm font-semibold text-primary-400">Akıllı Eşleştirme Teknolojisi</span>
+          </div>
+          
+          <h1 className="text-5xl sm:text-7xl font-black mb-6 leading-tight">
+            <span className="block text-slate-100">Aktivite Bul,</span>
+            <span className="block bg-gradient-to-r from-primary-400 via-secondary-500 to-secondary-600 
+                           bg-clip-text text-transparent text-glow-cyan">
               Takım Kur
             </span>
           </h1>
-
-          <p className="text-lg sm:text-xl text-gray-500 dark:text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-            {UI_TEXT.home.subtitle}
+          
+          <p className="text-xl text-slate-400 mb-10 max-w-2xl mx-auto">
+            Sana uygun aktiviteleri keşfet, yeni insanlarla tanış, 
+            <span className="text-primary-400 font-semibold"> AI destekli eşleştirme</span> ile 
+            mükemmel takım arkadaşları bul
           </p>
-
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          
+          <div className="flex gap-4 justify-center flex-wrap">
             <Link to="/activities">
-              <Button variant="primary" size="lg">
-                {UI_TEXT.home.cta}
-                <ArrowRight className="w-5 h-5" />
+              <Button variant="neon" size="lg" className="group">
+                Aktiviteleri Keşfet
+                <ArrowRight className="w-5 h-5 ml-2 inline group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
-            <Link to="/recommendations">
+            <Link to="/create">
               <Button variant="secondary" size="lg">
-                <Zap className="w-4 h-4" />
-                Öneri Al
+                Aktivite Oluştur
               </Button>
             </Link>
           </div>
         </div>
-      </section>
 
-      {/* ── Categories ── */}
-      <section className="max-w-5xl mx-auto px-4 pb-16">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {CATEGORY_KEYS.map((cat) => (
-            <Link
-              key={cat}
-              to={`/activities?category=${cat}`}
-              className="flex flex-col items-center gap-2 p-5 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-center group"
-            >
-              <span className="text-3xl">{CATEGORY_ICONS[cat]}</span>
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                {CATEGORIES[cat]}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Features ── */}
-      <section className="max-w-5xl mx-auto px-4 pb-24">
-        <h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 dark:text-white mb-10">
-          Neden SquadUp?
-        </h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {FEATURES.map((f) => (
+        {/* Platform Stats */}
+        <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-20 transition-all duration-700 ${statsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+          {[
+            { label: 'Aktif Kullanıcı', value: PLATFORM_STATS.totalUsers.toLocaleString('tr'), icon: <Users className="w-5 h-5 text-primary-400" />, color: 'text-primary-400' },
+            { label: 'Toplam Aktivite', value: PLATFORM_STATS.totalActivities, icon: <Calendar className="w-5 h-5 text-secondary-400" />, color: 'text-secondary-400' },
+            { label: 'Aktif Squad', value: PLATFORM_STATS.totalSquads, icon: <Shield className="w-5 h-5 text-emerald-400" />, color: 'text-emerald-400' },
+            { label: 'Bugün Aktif', value: PLATFORM_STATS.activeToday, icon: <Zap className="w-5 h-5 text-amber-400" />, color: 'text-amber-400' },
+          ].map((stat, i) => (
             <div
-              key={f.title}
-              className="flex flex-col gap-3 p-5 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm"
+              key={stat.label}
+              className="glass rounded-2xl p-6 border border-dark-border hover:border-primary-400/50 transition-all duration-300 text-center group"
+              style={{ transitionDelay: `${i * 100}ms` }}
             >
-              <span className={`inline-flex p-2.5 rounded-xl w-fit ${f.color}`}>{f.icon}</span>
-              <h3 className="font-bold text-gray-900 dark:text-white">{f.title}</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{f.desc}</p>
+              <div className="flex justify-center mb-3">{stat.icon}</div>
+              <div className={`text-3xl font-black mb-1 ${stat.color}`}>{stat.value}</div>
+              <div className="text-xs text-slate-500 font-medium">{stat.label}</div>
             </div>
           ))}
         </div>
-      </section>
 
-      {/* ── CTA Band ── */}
-      <section className="bg-gradient-to-r from-primary-600 to-blue-600 py-16 px-4">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">Hemen başla</h2>
-          <p className="text-primary-100 mb-8">Profilini oluştur, ilgi alanlarını seç ve kişiselleştirilmiş önerileri keşfet.</p>
-          <Link to="/profile">
-            <Button
-              variant="secondary"
-              size="lg"
-              className="bg-white text-primary-700 hover:bg-gray-50 border-0 shadow-lg"
-            >
-              Profil Oluştur <ArrowRight className="w-5 h-5" />
-            </Button>
-          </Link>
+        {/* Features Grid */}
+        <div className="grid md:grid-cols-3 gap-6 mb-20">
+          
+          {/* Feature 1 */}
+          <div className="group relative glass rounded-2xl p-8 border border-dark-border 
+                        hover:border-primary-400 transition-all duration-300 
+                        hover:shadow-glow-cyan">
+            <div className="absolute inset-0 bg-gradient-card rounded-2xl opacity-0 
+                          group-hover:opacity-100 transition-opacity duration-300"></div>
+            
+            <div className="relative z-10">
+              <div className="w-14 h-14 bg-gradient-to-br from-primary-400 to-primary-600 
+                            rounded-xl flex items-center justify-center mb-4 
+                            shadow-glow-cyan group-hover:scale-110 transition-transform">
+                <Zap className="w-7 h-7 text-white" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-100 mb-3 group-hover:text-primary-400 
+                           transition-colors">
+                Akıllı Eşleştirme
+              </h3>
+              <p className="text-slate-400">
+                İlgi alanlarınıza ve seviyenize göre size en uygun aktiviteleri ve 
+                takım arkadaşlarını bulun
+              </p>
+            </div>
+          </div>
+
+          {/* Feature 2 */}
+          <div className="group relative glass rounded-2xl p-8 border border-dark-border 
+                        hover:border-secondary-400 transition-all duration-300 
+                        hover:shadow-glow-purple">
+            <div className="absolute inset-0 bg-gradient-card rounded-2xl opacity-0 
+                          group-hover:opacity-100 transition-opacity duration-300"></div>
+            
+            <div className="relative z-10">
+              <div className="w-14 h-14 bg-gradient-to-br from-secondary-400 to-secondary-600 
+                            rounded-xl flex items-center justify-center mb-4 
+                            shadow-glow-purple group-hover:scale-110 transition-transform">
+                <Users className="w-7 h-7 text-white" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-100 mb-3 group-hover:text-secondary-400 
+                           transition-colors">
+                Canlı Topluluk
+              </h3>
+              <p className="text-slate-400">
+                Binlerce aktif kullanıcıyla tanışın, yeni arkadaşlıklar kurun, 
+                birlikte aktivitelere katılın
+              </p>
+            </div>
+          </div>
+
+          {/* Feature 3 */}
+          <div className="group relative glass rounded-2xl p-8 border border-dark-border 
+                        hover:border-primary-400 transition-all duration-300 
+                        hover:shadow-glow-cyan">
+            <div className="absolute inset-0 bg-gradient-card rounded-2xl opacity-0 
+                          group-hover:opacity-100 transition-opacity duration-300"></div>
+            
+            <div className="relative z-10">
+              <div className="w-14 h-14 bg-gradient-to-br from-primary-400 to-secondary-500 
+                            rounded-xl flex items-center justify-center mb-4 
+                            shadow-neon group-hover:scale-110 transition-transform">
+                <TrendingUp className="w-7 h-7 text-white" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-100 mb-3 
+                           bg-gradient-to-r from-primary-400 to-secondary-400 
+                           bg-clip-text group-hover:text-transparent transition-all">
+                Güvenilirlik Sistemi
+              </h3>
+              <p className="text-slate-400">
+                Kullanıcı güvenilirlik skorları ile en aktif ve güvenilir 
+                takım arkadaşlarını görün
+              </p>
+            </div>
+          </div>
         </div>
-      </section>
+
+        {/* Trending Activities */}
+        <div className="mb-20">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-4 h-4 text-white" />
+              </div>
+              <h2 className="text-2xl font-black text-slate-100">Trend Aktiviteler</h2>
+            </div>
+            <Link to="/activities" className="flex items-center gap-1 text-primary-400 text-sm font-semibold hover:text-primary-300 transition-colors">
+              Tümünü Gör <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-5">
+            {trendingActivities.map((activity, idx) => {
+              const fillPercent = Math.round((activity.current_participants / activity.max_participants) * 100);
+              const isFull = activity.current_participants >= activity.max_participants;
+              return (
+                <Link key={activity.id} to="/activities">
+                  <div className="group glass rounded-2xl border border-dark-border hover:border-primary-400 p-5 transition-all duration-300 hover:shadow-glow-cyan hover:-translate-y-1">
+                    <div className="flex items-start justify-between mb-4">
+                      <span className="text-2xl">{CATEGORY_ICONS[activity.category]}</span>
+                      {idx === 0 && (
+                        <span className="text-[10px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white px-2 py-1 rounded-full">
+                          🔥 HOT
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-bold text-slate-100 mb-1 text-sm group-hover:text-primary-400 transition-colors line-clamp-1">
+                      {activity.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 mb-3 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {activity.location.split(',')[0]}
+                    </p>
+                    
+                    {/* Fill bar */}
+                    <div className="mb-2">
+                      <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                        <span>{activity.current_participants}/{activity.max_participants} kişi</span>
+                        <span className={fillPercent >= 80 ? 'text-red-400 font-bold' : 'text-slate-400'}>
+                          {fillPercent >= 80 ? `Son ${activity.max_participants - activity.current_participants} yer!` : `%${fillPercent} dolu`}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-dark-hover rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            fillPercent >= 80
+                              ? 'bg-gradient-to-r from-red-500 to-orange-500'
+                              : 'bg-gradient-to-r from-primary-500 to-secondary-500'
+                          }`}
+                          style={{ width: `${fillPercent}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                        <Trophy className="w-3 h-3 text-secondary-400" />
+                        {COMPETITION_LEVELS[activity.competition_level]}
+                      </span>
+                      <span className="text-[10px] font-bold text-primary-400 flex items-center gap-1">
+                        Katıl <ArrowRight className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Top Squads */}
+        <div className="mb-20">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-secondary-400 to-primary-500 rounded-lg flex items-center justify-center">
+                <Shield className="w-4 h-4 text-white" />
+              </div>
+              <h2 className="text-2xl font-black text-slate-100">Popüler Squads</h2>
+            </div>
+            <Link to="/squads" className="flex items-center gap-1 text-primary-400 text-sm font-semibold hover:text-primary-300 transition-colors">
+              Tümünü Gör <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-5">
+            {topSquads.map((squad, idx) => (
+              <Link key={squad.id} to="/squads">
+                <div className="group glass rounded-2xl border border-dark-border hover:border-secondary-400 p-5 transition-all duration-300 hover:shadow-glow-purple hover:-translate-y-1">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-xl shadow-neon">
+                      {CATEGORY_ICONS[squad.category]}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-100 group-hover:text-secondary-400 transition-colors">
+                        {squad.name}
+                      </h3>
+                      <p className="text-xs text-slate-500">{CATEGORIES[squad.category]}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400 mb-4 line-clamp-2">{squad.description}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-primary-400" />
+                      <span className="font-bold text-slate-200">{squad.member_count}</span> üye
+                    </span>
+                    {idx === 0 && (
+                      <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                        ⭐ En Popüler
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA Section */}
+        <div className="text-center glass rounded-3xl p-12 border border-primary-400/30 
+                      shadow-glow-cyan relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-primary opacity-10"></div>
+          <div className="relative z-10">
+            <h2 className="text-3xl font-bold text-slate-100 mb-4">
+              Hemen Başla, İlk Aktiviteni Oluştur
+            </h2>
+            <p className="text-slate-400 mb-6 max-w-xl mx-auto">
+              Dakikalar içinde yeni bir aktivite oluştur veya sana uygun bir aktiviteye katıl
+            </p>
+            <div className="flex gap-4 justify-center flex-wrap">
+              <Link to="/create">
+                <Button variant="neon" size="lg" className="animate-glow">
+                  Ücretsiz Başla
+                </Button>
+              </Link>
+              <Link to="/recommendations">
+                <Button variant="secondary" size="lg">
+                  <Sparkles className="w-5 h-5" />
+                  AI Önerilerini Gör
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

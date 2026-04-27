@@ -14,6 +14,8 @@ export interface User {
   attended_events: number;
   joined_events: number;
   reliability_score: number;
+  badges?: string[];
+  squads?: string[];
   created_at: string;
 }
 
@@ -29,8 +31,10 @@ export interface Activity {
   max_participants: number;
   current_participants: number;
   participant_count?: number;
+  participants?: User[];
   image_url?: string;
   created_at: string;
+  match_score?: number;
   // Added by recommendations endpoint
   score?: number;
   match_result?: {
@@ -42,6 +46,16 @@ export interface Activity {
       reliability: { score: number; weight: number; contribution: number };
     };
   };
+}
+
+export interface Squad {
+  id: string;
+  name: string;
+  description: string;
+  category: Category;
+  creator_id: string;
+  member_count: number;
+  created_at: string;
 }
 
 export interface FilterState {

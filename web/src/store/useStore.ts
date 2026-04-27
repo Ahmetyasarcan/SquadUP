@@ -47,10 +47,15 @@ export const useStore = create<AppStore>((set) => ({
   setUser: (user, token) => {
     if (token) {
       localStorage.setItem('squadup-token', token);
-    } else if (token === null) {
+    } else if (token === null || token === '') {
       localStorage.removeItem('squadup-token');
     }
-    set({ user, token: token !== undefined ? token : localStorage.getItem('squadup-token') });
+    
+    // Determine the next token value: 
+    // - Use the passed token if provided
+    // - Otherwise use what's in state/localStorage
+    const nextToken = token !== undefined ? token : localStorage.getItem('squadup-token');
+    set({ user, token: nextToken });
   },
 
   setActivities: (activities) => set({ activities }),

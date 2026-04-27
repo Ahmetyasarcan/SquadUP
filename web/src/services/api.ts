@@ -4,9 +4,13 @@ const API_BASE = '/api'; // Proxied through Vite to localhost:5000
 
 // ========== ERROR HANDLING WRAPPER ==========
 
+import { supabase } from '../lib/supabase';
+
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<ApiResponse<T>> {
   try {
-    const token = localStorage.getItem('squadup-token');
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -66,14 +70,33 @@ export async function login(credentials: { email: string; password: string }): P
   });
 }
 
-export async function register(userData: {
+export async function registerStep1(userData: {
   email: string;
   password: string;
+}): Promise<ApiResponse<{ user: User; user_id: string }>> {
+  return fetchJSON<{ user: User; user_id: string }>(`${API_BASE}/auth/register/step1`, {
+    method: 'POST',
+    body: JSON.stringify(userData),
+  });
+}
+
+export async function checkVerification(credentials: {
+  email: string;
+  password: string;
+}): Promise<ApiResponse<{ verified: boolean; error?: string }>> {
+  return fetchJSON<{ verified: boolean; error?: string }>(`${API_BASE}/auth/verify-check`, {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+}
+
+export async function registerStep2(userData: {
+  user_id: string;
   name: string;
   interests: string[];
   competition_level: number;
-}): Promise<ApiResponse<{ user: User; session?: { access_token: string; expires_in: number } }>> {
-  return fetchJSON<{ user: User; session?: { access_token: string; expires_in: number } }>(`${API_BASE}/auth/register`, {
+}): Promise<ApiResponse<{ user: User }>> {
+  return fetchJSON<{ user: User }>(`${API_BASE}/auth/register/step2`, {
     method: 'POST',
     body: JSON.stringify(userData),
   });
@@ -134,5 +157,57 @@ export async function calculateScore(
   return fetchJSON(`${API_BASE}/activities/${activityId}/score`, {
     method: 'POST',
     body: JSON.stringify({ user_id: userId }),
+  });
+}
+// ========== SQUAD ENDPOINTS ==========
+
+export async function getSquads(): Promise<ApiResponse<{ squads: any[]; count: number }>> {
+  return fetchJSON<{ squads: any[]; count: number }>(`${API_BASE}/squads`);
+}
+
+export async function createSquad(squadData: {
+  name: string;
+  description: string;
+  category: string;
+  creator_id: string;
+}): Promise<ApiResponse<{ squad: any }>> {
+  return fetchJSON<{ squad: any }>(`${API_BASE}/squads`, {
+    method: 'POST',
+    body: JSON.stringify(squadData),
+  });
+}
+
+export async function joinSquad(squadId: string, userId: string): Promise<ApiResponse<{ membership: any }>> {
+  return fetchJSON<{ membership: any }>(`${API_BASE}/squads/${squadId}/join`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+// ========== FRIEND ENDPOINTS ==========
+
+export async function searchUsers(query: string): Promise<ApiResponse<{ users: User[] }>> {
+  return fetchJSON<{ users: User[] }>(`${API_BASE}/users/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function sendFriendRequest(friendId: string): Promise<ApiResponse<{ message: string }>> {
+  return fetchJSON<{ message: string }>(`${API_BASE}/friends/request`, {
+    method: 'POST',
+    body: JSON.stringify({ friend_id: friendId }),
+  });
+}
+
+export async function getFriends(): Promise<ApiResponse<{
+  friends: User[];
+  pending_incoming: (User & { request_id: string })[];
+  pending_outgoing: User[];
+}>> {
+  return fetchJSON(`${API_BASE}/friends`);
+}
+
+export async function respondToFriendRequest(requestId: string, status: 'accepted' | 'rejected'): Promise<ApiResponse<{ message: string }>> {
+  return fetchJSON<{ message: string }>(`${API_BASE}/friends/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ request_id: requestId, status }),
   });
 }

@@ -69,6 +69,8 @@ def create_user(user_data: Dict, auth_id: Optional[str] = None) -> Dict:
         payload["id"] = auth_id
 
     result = client.table("users").insert(payload).execute()
+    if not result.data:
+        raise Exception(f"User could not be created in table. Result: {result}")
     return result.data[0]
 
 
@@ -123,7 +125,29 @@ def update_user_attendance(user_id: str, attended_delta: int, joined_delta: int)
         .eq("id", user_id)
         .execute()
     )
+    if not result.data:
+        raise Exception(f"User attendance could not be updated. ID: {user_id}")
     return result.data[0]
+
+
+def update_user(user_id: str, user_data: Dict) -> Dict:
+    """Update user profile details."""
+    client = get_client()
+    try:
+        result = (
+            client.table("users")
+            .update(user_data)
+            .eq("id", user_id)
+            .execute()
+        )
+        if not result.data:
+            print(f"DEBUG: update_user failed for ID {user_id}. Data: {user_data}")
+            print(f"DEBUG: Full result: {result}")
+            raise ValueError(f"Kullanıcı bulunamadı veya güncellenemedi (ID: {user_id})")
+        return result.data[0]
+    except Exception as e:
+        print(f"ERROR in update_user: {e}")
+        raise e
 
 
 def list_all_users() -> List[Dict]:
@@ -131,6 +155,23 @@ def list_all_users() -> List[Dict]:
     client = get_client()
     result = client.table("users").select("*").execute()
     return result.data
+
+
+def award_badge(user_id: str, badge_name: str) -> Dict:
+    """Add a badge to user's badges array if not already present."""
+    client = get_client()
+    user = get_user_by_id(user_id)
+    if not user:
+        raise ValueError(f"User {user_id} not found")
+    
+    current_badges = user.get("badges", [])
+    if badge_name not in current_badges:
+        current_badges.append(badge_name)
+        result = client.table("users").update({"badges": current_badges}).eq("id", user_id).execute()
+        if not result.data:
+            raise Exception(f"Badge could not be awarded. ID: {user_id}")
+        return result.data[0]
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +205,8 @@ def create_activity(activity_data: Dict) -> Dict:
     """
     client = get_client()
     result = client.table("activities").insert(activity_data).execute()
+    if not result.data:
+        raise Exception("Activity could not be created.")
     return result.data[0]
 
 
@@ -178,6 +221,21 @@ def get_activity_participant_count(activity_id: str) -> int:
         .execute()
     )
     return result.count or 0
+
+
+def get_activity_participants(activity_id: str) -> List[Dict]:
+    """Fetch full user profiles for all participants of an activity."""
+    client = get_client()
+    # Join participations with users
+    result = (
+        client.table("participations")
+        .select("users(*)")
+        .eq("activity_id", activity_id)
+        .in_("status", ["joined", "attended"])
+        .execute()
+    )
+    # Extract user data from nested result
+    return [row["users"] for row in result.data if row.get("users")]
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +292,184 @@ def join_activity(user_id: str, activity_id: str) -> Dict:
     result = client.table("participations").insert(payload).execute()
 
     # Increment user's joined_events counter
-    update_user_attendance(user_id, attended_delta=0, joined_delta=1)
+    user = update_user_attendance(user_id, attended_delta=0, joined_delta=1)
+
+    # Check for automatic badges
+    if user["joined_events"] >= 3:
+        award_badge(user_id, "active_squadmate")
+    if user["joined_events"] >= 10:
+        award_badge(user_id, "squad_legend")
 
     return result.data[0]
+
+
+# ---------------------------------------------------------------------------
+# Squad operations
+# ---------------------------------------------------------------------------
+def list_all_squads() -> List[Dict]:
+    """Fetch all squads with member count."""
+    client = get_client()
+    # Fetch squads
+    squads = client.table("squads").select("*").execute().data
+    # Enrich with member count
+    for squad in squads:
+        count_res = client.table("squad_members").select("id", count="exact").eq("squad_id", squad["id"]).execute()
+        squad["member_count"] = count_res.count or 0
+    return squads
+
+
+def create_squad(squad_data: Dict) -> Dict:
+    """Create a new squad and add creator as member."""
+    client = get_client()
+    # Insert squad
+    res = client.table("squads").insert(squad_data).execute()
+    if not res.data:
+        raise Exception("Squad could not be created.")
+    squad = res.data[0]
+    
+    # Add creator as member
+    client.table("squad_members").insert({
+        "squad_id": squad["id"],
+        "user_id": squad_data["creator_id"],
+        "role": "creator"
+    }).execute()
+    
+    return squad
+
+
+def join_squad(squad_id: str, user_id: str) -> Dict:
+    """Add a user to a squad."""
+    client = get_client()
+    # Check if already a member
+    existing = client.table("squad_members").select("id").eq("squad_id", squad_id).eq("user_id", user_id).execute()
+    if existing.data:
+        raise ValueError("User is already a member of this squad")
+        
+    res = client.table("squad_members").insert({
+        "squad_id": squad_id,
+        "user_id": user_id,
+        "role": "member"
+    }).execute()
+    if not res.data:
+        raise Exception("Failed to join squad.")
+    return res.data[0]
+
+
+# ---------------------------------------------------------------------------
+# Friend operations
+# ---------------------------------------------------------------------------
+def search_users(query: str, current_user_id: str) -> List[Dict]:
+    """Search for users by name or email, excluding current user."""
+    client = get_client()
+    result = (
+        client.table("users")
+        .select("*")
+        .or_(f"name.ilike.%{query}%,email.ilike.%{query}%")
+        .neq("id", current_user_id)
+        .limit(20)
+        .execute()
+    )
+    return result.data
+
+
+def send_friend_request(user_id: str, friend_id: str) -> Dict:
+    """Create a pending friend request."""
+    if user_id == friend_id:
+        raise ValueError("Kendine arkadaşlık isteği gönderemezsin")
+        
+    client = get_client()
+    # Check if already friends or pending (either direction)
+    # Using a simpler query for compatibility
+    existing = (
+        client.table("friends")
+        .select("*")
+        .or_(f"user_id.eq.{user_id},friend_id.eq.{user_id}")
+        .execute()
+    )
+    
+    # Filter manually for exact pair to be 100% sure of logic
+    for rel in existing.data:
+        if (rel["user_id"] == user_id and rel["friend_id"] == friend_id) or \
+           (rel["user_id"] == friend_id and rel["friend_id"] == user_id):
+            raise ValueError("Zaten bir arkadaşlık ilişkisi veya bekleyen istek var")
+        
+    res = client.table("friends").insert({
+        "user_id": user_id,
+        "friend_id": friend_id,
+        "status": "pending"
+    }).execute()
+    
+    if not res.data:
+        error_msg = res.error.message if hasattr(res, 'error') and res.error else "Unknown error"
+        print(f"Friend request insert error: {error_msg}")
+        raise Exception(f"Friend request could not be created: {error_msg}")
+        
+    return res.data[0]
+
+
+def get_user_friends(user_id: str) -> Dict[str, List[Dict]]:
+    """Get accepted friends and pending requests."""
+    client = get_client()
+    
+    # 1. Fetch all relationships involving this user
+    res = client.table("friends").select("*").or_(f"user_id.eq.{user_id},friend_id.eq.{user_id}").execute()
+    records = res.data if res.data else []
+    
+    # 2. Collect all unique friend IDs
+    other_user_ids = set()
+    for r in records:
+        other_id = r["friend_id"] if r["user_id"] == user_id else r["user_id"]
+        other_user_ids.add(other_id)
+    
+    # 3. Fetch profiles for these users
+    user_profiles = {}
+    if other_user_ids:
+        profiles_res = client.table("users").select("*").in_("id", list(other_user_ids)).execute()
+        if profiles_res.data:
+            for p in profiles_res.data:
+                user_profiles[p["id"]] = p
+    
+    # 4. Sort into categories
+    friends = []
+    incoming = []
+    outgoing = []
+    
+    for r in records:
+        other_id = r["friend_id"] if r["user_id"] == user_id else r["user_id"]
+        profile = user_profiles.get(other_id)
+        
+        if not profile:
+            # Fallback if profile is still missing
+            profile = {"id": other_id, "name": "Bilinmeyen Kullanıcı", "email": ""}
+            
+        if r["status"] == "accepted":
+            friends.append(profile)
+        elif r["status"] == "pending":
+            if r["user_id"] == user_id:
+                # We sent this
+                outgoing.append(profile)
+            else:
+                # We received this
+                incoming.append({**profile, "request_id": r["id"]})
+                
+    return {
+        "friends": friends,
+        "pending_incoming": incoming,
+        "pending_outgoing": outgoing
+    }
+
+
+def respond_to_friend_request(request_id: str, status: str) -> Dict:
+    """Accept or reject a friend request."""
+    client = get_client()
+    if status not in ["accepted", "rejected"]:
+        raise ValueError("Invalid status")
+        
+    if status == "rejected":
+        res = client.table("friends").delete().eq("id", request_id).execute()
+        return {"status": "deleted"}
+    else:
+        res = client.table("friends").update({"status": "accepted"}).eq("id", request_id).execute()
+        if not res.data:
+            raise Exception("Failed to accept friend request.")
+        return res.data[0]

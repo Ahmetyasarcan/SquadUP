@@ -1,105 +1,166 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useStore } from '../store/useStore';
-import { login } from '../services/api';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
 import toast from 'react-hot-toast';
-import { LogIn, Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, LogIn } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { setUser } = useStore();
+  const { signIn } = useAuth();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      toast.error('E-posta ve şifre girin');
+    
+    if (!email || !password) {
+      toast.error('Lütfen tüm alanları doldurun');
       return;
     }
 
-    setIsLoading(true);
-    const { data, error } = await login({ email, password });
-    setIsLoading(false);
-
-    if (data) {
-      setUser(data.user, data.session.access_token);
-      toast.success(`Hoş geldin, ${data.user.name}! 👋`);
+    setLoading(true);
+    try {
+      await signIn(email, password);
       navigate('/');
-    } else {
-      toast.error(error || 'Giriş başarısız');
+    } catch (error: any) {
+      console.error('Login error:', error);
+      
+      // Türkçe hata mesajları
+      if (error.message.includes('Invalid login credentials')) {
+        toast.error('Email veya şifre hatalı');
+      } else if (error.message.includes('Email not confirmed')) {
+        toast.error('Lütfen email adresinizi onaylayın');
+      } else {
+        toast.error('Giriş yapılamadı: ' + error.message);
+      }
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center px-4 bg-gradient-to-br from-gray-50 via-primary-50/30 to-blue-50/20 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
-      {/* Background blobs */}
-      <div className="fixed top-20 -right-20 w-80 h-80 bg-primary-200 dark:bg-primary-900/20 rounded-full blur-3xl opacity-30 pointer-events-none" />
-      <div className="fixed bottom-20 -left-20 w-60 h-60 bg-blue-200 dark:bg-blue-900/20 rounded-full blur-3xl opacity-20 pointer-events-none" />
+    <div className="min-h-screen bg-dark-bg flex items-center justify-center px-4 relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 bg-gradient-hero opacity-50"></div>
+      <div className="absolute top-20 left-10 w-72 h-72 bg-primary-500/20 rounded-full blur-3xl animate-pulse-slow"></div>
+      <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary-500/20 rounded-full blur-3xl animate-pulse-slow" style={{ animationDelay: '1s' }}></div>
 
-      <div className="w-full max-w-md animate-fade-in-up">
-        {/* Logo + Title */}
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-500/20">
-            <span className="text-white font-extrabold text-xl">S</span>
+      <div className="relative z-10 w-full max-w-md">
+        {/* Card */}
+        <div className="glass rounded-2xl p-8 border border-dark-border shadow-2xl">
+          
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary-400 to-secondary-500 rounded-2xl shadow-glow-cyan mb-4">
+              <span className="text-white font-black text-2xl">S</span>
+            </div>
+            <h1 className="text-3xl font-black bg-gradient-to-r from-primary-400 to-secondary-500 bg-clip-text text-transparent mb-2">
+              SquadUp
+            </h1>
+            <p className="text-slate-400">Hoş geldin! Giriş yap ve aktivitelere katıl</p>
           </div>
-          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white mb-1">
-            SquadUp'a Giriş Yap
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Hesabınla giriş yap, takımını kur
-          </p>
-        </div>
 
-        {/* Login Form */}
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-xl p-6 space-y-5 mb-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-3">
-              <Input
-                label="E-posta"
-                type="email"
-                placeholder="E-posta adresiniz"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                icon={<Mail className="w-4 h-4" />}
-                required
-              />
-              <Input
-                label="Şifre"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                icon={<Lock className="w-4 h-4" />}
-                required
-              />
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  className="w-full pl-11 pr-4 py-3 bg-dark-card border border-dark-border rounded-lg 
+                           text-slate-100 placeholder-slate-500
+                           focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20
+                           transition-all duration-200"
+                  required
+                />
+              </div>
             </div>
 
-            <Button 
-              type="submit" 
-              variant="primary" 
-              size="md" 
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Şifre
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-11 pr-4 py-3 bg-dark-card border border-dark-border rounded-lg 
+                           text-slate-100 placeholder-slate-500
+                           focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20
+                           transition-all duration-200"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Link 
+                to="/forgot-password" 
+                className="text-sm text-primary-400 hover:text-primary-300 transition-colors"
+              >
+                Şifremi Unuttum
+              </Link>
+            </div>
+
+            <Button
+              type="submit"
+              variant="primary"
               className="w-full"
-              disabled={isLoading}
+              disabled={loading}
             >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Giriş yapılıyor...</span>
+                </div>
               ) : (
-                <LogIn className="w-4 h-4" />
+                <div className="flex items-center justify-center gap-2">
+                  <LogIn className="w-5 h-5" />
+                  <span>Giriş Yap</span>
+                </div>
               )}
-              Giriş Yap
             </Button>
           </form>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-dark-border"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-4 bg-dark-card text-slate-400">veya</span>
+            </div>
+          </div>
+
+          {/* Sign Up Link */}
+          <div className="text-center">
+            <p className="text-slate-400">
+              Hesabın yok mu?{' '}
+              <Link 
+                to="/signup" 
+                className="text-primary-400 hover:text-primary-300 font-semibold transition-colors"
+              >
+                Kayıt Ol
+              </Link>
+            </p>
+          </div>
         </div>
 
-        <p className="text-center text-xs text-gray-400 dark:text-gray-500">
-          Henüz hesabınız yok mu?{' '}
-          <a href="/register" className="text-primary-600 dark:text-primary-400 hover:underline font-medium">
-            Kayıt olun
-          </a>.
+        {/* Footer */}
+        <p className="text-center text-slate-500 text-sm mt-8">
+          SquadUp ile aktivite bul, takım kur
         </p>
       </div>
     </div>

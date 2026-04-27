@@ -168,7 +168,7 @@ export default function ProfilePage() {
                   min={1}
                   max={5}
                   value={form.competition_level}
-                  onChange={(e) => setForm({ ...form, competition_level: +e.target.value })}
+                  onChange={(e) => setForm({ ...form, competition_level: +e.target.value as any })}
                   className="w-full accent-primary-600"
                 />
                 <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -232,6 +232,29 @@ export default function ProfilePage() {
                       />
                     </div>
                   </div>
+
+                  {/* Badges */}
+                  {user.badges && user.badges.length > 0 && (
+                    <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Kazanılan Rozetler</p>
+                      <div className="flex flex-wrap gap-2">
+                        {user.badges.map((badge) => {
+                          const badgeData: Record<string, { label: string, color: string, icon: string }> = {
+                            active_squadmate: { label: 'Aktif Oyuncu', color: 'bg-cyan-500', icon: '⚡' },
+                            squad_legend: { label: 'Efsane', color: 'bg-purple-500', icon: '👑' },
+                            verified: { label: 'Onaylı', color: 'bg-blue-500', icon: '✔' },
+                          };
+                          const data = badgeData[badge] || { label: badge, color: 'bg-gray-500', icon: '⭐' };
+                          return (
+                            <div key={badge} className={`${data.color} text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-sm animate-pulse`}>
+                              <span>{data.icon}</span>
+                              {data.label}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (

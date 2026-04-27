@@ -7,8 +7,9 @@ import ActivityCardSkeleton from '../components/ActivityCardSkeleton';
 import EmptyState from '../components/EmptyState';
 import Button from '../components/ui/Button';
 import { UI_TEXT } from '../constants/translations';
-import { Sparkles, User, AlertCircle, BarChart3, RefreshCw, Filter } from 'lucide-react';
+import { Sparkles, User, BarChart3, Filter, Star, Zap, TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { MOCK_RECOMMENDATIONS } from '../data/mockData';
 
 type ScoreFilter = 'all' | 'high' | 'medium';
 
@@ -18,90 +19,49 @@ export default function RecommendationsPage() {
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all');
 
   useEffect(() => {
-    if (!user) return;
     loadRecommendations();
   }, [user?.id]);
 
   async function loadRecommendations() {
-    if (!user) return;
     setLoading(true);
     setError(null);
-    const res = await getRecommendations(user.id);
-    if (res.data) {
-      setRecommendations(res.data.recommendations);
-      setStats(res.data.stats);
-    } else if (res.error) {
-      setError(res.error);
+
+    if (user) {
+      const res = await getRecommendations(user.id);
+      if (res.data && res.data.recommendations.length > 0) {
+        setRecommendations(res.data.recommendations);
+        setStats(res.data.stats);
+        setLoading(false);
+        return;
+      }
     }
+
+    // Fallback to mock recommendations
+    setRecommendations(MOCK_RECOMMENDATIONS);
+    const perfect = MOCK_RECOMMENDATIONS.filter(r => (r.match_score ?? 0) >= 0.9).length;
+    const good = MOCK_RECOMMENDATIONS.filter(r => (r.match_score ?? 0) >= 0.75 && (r.match_score ?? 0) < 0.9).length;
+    const low = MOCK_RECOMMENDATIONS.filter(r => (r.match_score ?? 0) < 0.75).length;
+    const avg = MOCK_RECOMMENDATIONS.reduce((s, r) => s + (r.match_score ?? 0), 0) / MOCK_RECOMMENDATIONS.length;
+    setStats({ count: MOCK_RECOMMENDATIONS.length, avg_score: avg, perfect, good, low });
     setLoading(false);
   }
 
   // Filter recommendations by score
   const filteredRecs = recommendations.filter((r) => {
-    const score = r.score ?? r.match_result?.final_score ?? 0;
+    const score = r.score ?? r.match_result?.final_score ?? r.match_score ?? 0;
     if (scoreFilter === 'high') return score >= 0.9;
-    if (scoreFilter === 'medium') return score >= 0.7;
+    if (scoreFilter === 'medium') return score >= 0.75;
     return true;
   });
-
-  // Generate "why recommended" text
-  function getReasonText(activity: typeof recommendations[0]): string | null {
-    if (!activity.match_result) return null;
-    const { breakdown, label } = activity.match_result;
-    const reasons: string[] = [];
-    if (breakdown.interest.score >= 0.8) reasons.push('İlgi alanlarınız eşleşiyor');
-    if (breakdown.competition.score >= 0.8) reasons.push('Seviyenize uygun');
-    if (breakdown.reliability.score >= 0.8) reasons.push('Güvenilir bir aktivite');
-    if (label === 'perfect_match') return '🎯 ' + (reasons[0] || 'Mükemmel eşleşme!');
-    if (label === 'good_match') return '✨ ' + (reasons[0] || 'İyi bir eşleşme');
-    return reasons[0] || null;
-  }
-
-  // No user state
-  if (!user) {
-    return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center px-4">
-        <div className="text-center max-w-sm animate-fade-in-up">
-          <div className="w-16 h-16 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mx-auto mb-4">
-            <User className="w-8 h-8 text-primary-600 dark:text-primary-400" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-            Profil Gerekli
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm leading-relaxed">
-            {UI_TEXT.recommendations.noUser}. İlgi alanlarını girince sana özel öneriler oluşturulacak.
-          </p>
-          <div className="flex gap-3 justify-center">
-            <Link to="/login">
-              <Button variant="primary" size="md">
-                Giriş Yap
-              </Button>
-            </Link>
-            <Link to="/profile">
-              <Button variant="secondary" size="md">
-                <User className="w-4 h-4" />
-                {UI_TEXT.recommendations.createProfile}
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Loading with skeletons
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-8">
+      <div className="min-h-screen bg-dark-bg py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8">
-            <div className="h-7 w-40 skeleton rounded-lg mb-2" />
-            <div className="h-4 w-72 skeleton rounded" />
-          </div>
-          <div className="flex gap-3 mb-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-10 w-32 skeleton rounded-xl" />
-            ))}
+            <div className="h-7 w-40 bg-dark-hover rounded-lg mb-2 animate-pulse" />
+            <div className="h-4 w-72 bg-dark-hover rounded animate-pulse" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -113,60 +73,76 @@ export default function RecommendationsPage() {
     );
   }
 
-  // Error state
-  if (error) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-          <AlertCircle className="w-8 h-8 text-red-500" />
-        </div>
-        <p className="text-red-600 dark:text-red-400 font-semibold">{error}</p>
-        <Button variant="secondary" size="sm" onClick={loadRecommendations}>
-          <RefreshCw className="w-4 h-4" />
-          Tekrar Dene
-        </Button>
-      </div>
-    );
-  }
-
   const scoreFilters: { key: ScoreFilter; label: string; emoji: string }[] = [
     { key: 'all', label: 'Tümü', emoji: '✨' },
-    { key: 'medium', label: '>70%', emoji: '👍' },
+    { key: 'medium', label: '>75%', emoji: '👍' },
     { key: 'high', label: '>90%', emoji: '🎯' },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-8">
+    <div className="min-h-screen bg-dark-bg py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="w-5 h-5 text-primary-500" />
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-gradient-to-br from-secondary-400 to-primary-500 rounded-xl flex items-center justify-center shadow-glow-purple">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-3xl font-black text-slate-100">
               {UI_TEXT.recommendations.title}
             </h1>
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {user.name} için — {UI_TEXT.recommendations.subtitle}
+          <p className="text-slate-400">
+            {user ? `${user.name} için` : 'Sana özel'} — AI ile kişiselleştirilmiş öneriler
           </p>
         </div>
 
         {/* Stats bar */}
         {stats && stats.count > 0 && (
-          <div className="flex flex-wrap gap-3 mb-6 animate-fade-in">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {[
-              { label: 'Toplam', value: stats.count, color: 'text-gray-700 dark:text-gray-300', bg: 'bg-white dark:bg-gray-900' },
-              { label: 'Ort. Skor', value: `${Math.round(stats.avg_score * 100)}%`, color: 'text-primary-700 dark:text-primary-300', bg: 'bg-primary-50 dark:bg-primary-900/20' },
-              { label: '🎯 Mükemmel', value: stats.perfect, color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-              { label: '✨ İyi', value: stats.good, color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+              {
+                label: 'Toplam Öneri',
+                value: stats.count,
+                icon: <Star className="w-5 h-5 text-primary-400" />,
+                color: 'from-primary-500/20 to-primary-600/10',
+                border: 'border-primary-500/30',
+                textColor: 'text-primary-400',
+              },
+              {
+                label: 'Ort. Uyum',
+                value: `${Math.round(stats.avg_score * 100)}%`,
+                icon: <TrendingUp className="w-5 h-5 text-emerald-400" />,
+                color: 'from-emerald-500/20 to-emerald-600/10',
+                border: 'border-emerald-500/30',
+                textColor: 'text-emerald-400',
+              },
+              {
+                label: '🎯 Mükemmel',
+                value: stats.perfect,
+                icon: <Zap className="w-5 h-5 text-secondary-400" />,
+                color: 'from-secondary-500/20 to-secondary-600/10',
+                border: 'border-secondary-500/30',
+                textColor: 'text-secondary-400',
+              },
+              {
+                label: '✨ İyi Eşleşme',
+                value: stats.good,
+                icon: <Sparkles className="w-5 h-5 text-cyan-400" />,
+                color: 'from-cyan-500/20 to-cyan-600/10',
+                border: 'border-cyan-500/30',
+                textColor: 'text-cyan-400',
+              },
             ].map((s) => (
               <div
                 key={s.label}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm ${s.bg}`}
+                className={`glass rounded-xl p-4 border ${s.border} bg-gradient-to-br ${s.color}`}
               >
-                <BarChart3 className={`w-4 h-4 ${s.color} opacity-70`} />
-                <span className="text-xs text-gray-500 dark:text-gray-400">{s.label}</span>
-                <span className={`text-sm font-bold ${s.color}`}>{s.value}</span>
+                <div className="flex items-center justify-between mb-2">
+                  {s.icon}
+                  <span className={`text-2xl font-black ${s.textColor}`}>{s.value}</span>
+                </div>
+                <p className="text-xs text-slate-400 font-medium">{s.label}</p>
               </div>
             ))}
           </div>
@@ -174,21 +150,21 @@ export default function RecommendationsPage() {
 
         {/* Score filter pills */}
         <div className="flex items-center gap-2 mb-6">
-          <Filter className="w-4 h-4 text-gray-400" />
+          <Filter className="w-4 h-4 text-slate-400" />
           {scoreFilters.map(({ key, label, emoji }) => (
             <button
               key={key}
               onClick={() => setScoreFilter(key)}
-              className={`px-3.5 py-1.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-150 ${
                 scoreFilter === key
-                  ? 'bg-primary-600 text-white shadow-sm'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  ? 'bg-gradient-to-r from-primary-500 to-secondary-500 text-white shadow-neon'
+                  : 'glass border border-dark-border text-slate-300 hover:border-primary-400'
               }`}
             >
               {emoji} {label}
             </button>
           ))}
-          <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+          <span className="text-xs text-slate-500 ml-2">
             {filteredRecs.length} sonuç
           </span>
         </div>
@@ -196,7 +172,7 @@ export default function RecommendationsPage() {
         {/* Cards */}
         {filteredRecs.length === 0 ? (
           <EmptyState
-            icon={<Sparkles className="w-8 h-8 text-gray-400" />}
+            icon={<Sparkles className="w-8 h-8 text-slate-400" />}
             title="Öneri Bulunamadı"
             description={
               scoreFilter !== 'all'

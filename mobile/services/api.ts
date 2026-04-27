@@ -1,17 +1,19 @@
 import type { User, Activity } from '../types';
+import * as SecureStore from 'expo-secure-store';
 
 // Change this to your computer's local IP when testing on physical device
 const API_BASE = 'http://10.196.76.77:5000/api';
-// For physical device: 'http://192.168.1.XXX:5000/api'
 
 // ========== ERROR HANDLING ==========
 
 async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
   try {
+    const token = await SecureStore.getItemAsync('squadup-token');
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         ...options?.headers,
       },
     });
@@ -51,6 +53,48 @@ export async function getRecommendations(userId: string): Promise<{
   return fetchAPI(`${API_BASE}/users/${userId}/recommendations`);
 }
 
+// ========== AUTH ==========
+
+export async function login(credentials: any): Promise<any> {
+  const data = await fetchAPI<any>(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+  if (data.session?.access_token) {
+    await SecureStore.setItemAsync('squadup-token', data.session.access_token);
+  }
+  return data;
+}
+
+export async function registerStep1(userData: any): Promise<any> {
+  return fetchAPI<any>(`${API_BASE}/auth/register/step1`, {
+    method: 'POST',
+    body: JSON.stringify(userData),
+  });
+}
+
+export async function checkVerification(credentials: any): Promise<any> {
+  return fetchAPI<any>(`${API_BASE}/auth/verify-check`, {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+}
+
+export async function registerStep2(userData: any): Promise<any> {
+  return fetchAPI<any>(`${API_BASE}/auth/register/step2`, {
+    method: 'POST',
+    body: JSON.stringify(userData),
+  });
+}
+
+export async function getMe(): Promise<any> {
+  return fetchAPI(`${API_BASE}/auth/me`);
+}
+
+export async function logout(): Promise<void> {
+  await SecureStore.deleteItemAsync('squadup-token');
+}
+
 export async function joinActivity(
   activityId: string,
   userId: string
@@ -58,5 +102,43 @@ export async function joinActivity(
   return fetchAPI(`${API_BASE}/activities/${activityId}/join`, {
     method: 'POST',
     body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+// ========== SQUADS ==========
+
+export async function getSquads(): Promise<{ squads: any[], count: number }> {
+  return fetchAPI(`${API_BASE}/squads`);
+}
+
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+// ========== FRIENDS ==========
+
+export async function searchUsers(query: string): Promise<{ users: User[] }> {
+  return fetchAPI(`${API_BASE}/users/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function sendFriendRequest(friendId: string): Promise<any> {
+  return fetchAPI(`${API_BASE}/friends/request`, {
+    method: 'POST',
+    body: JSON.stringify({ friend_id: friendId }),
+  });
+}
+
+export async function getFriends(): Promise<{
+  friends: User[];
+  pending_incoming: (User & { request_id: string })[];
+  pending_outgoing: User[];
+}> {
+  return fetchAPI(`${API_BASE}/friends`);
+}
+
+export async function respondToFriendRequest(requestId: string, status: 'accepted' | 'rejected'): Promise<any> {
+  return fetchAPI(`${API_BASE}/friends/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ request_id: requestId, status }),
   });
 }

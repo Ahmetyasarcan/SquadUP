@@ -6,12 +6,16 @@ import {
   TextInput,
   StyleSheet,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../store/useStore';
 import { getActivities } from '../../services/api';
 import { buildActivityPipeline } from '../../utils/filters';
 import ActivityCard from '../../components/ActivityCard';
 import { UI_TEXT } from '../../constants/translations';
+import { COLORS } from '../../constants/colors';
 
 export default function ActivitiesScreen() {
   const {
@@ -23,7 +27,10 @@ export default function ActivitiesScreen() {
     setLoading,
   } = useStore();
 
-  // Fetch activities
+  useEffect(() => {
+    StatusBar.setBarStyle('light-content');
+  }, []);
+
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -39,7 +46,6 @@ export default function ActivitiesScreen() {
     load();
   }, []);
 
-  // FUNCTIONAL PIPELINE - Pure function composition
   const filteredActivities = useMemo(() => {
     const pipeline = buildActivityPipeline(
       filters.search,
@@ -53,7 +59,7 @@ export default function ActivitiesScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={COLORS.primaryLight} />
         <Text style={styles.loadingText}>{UI_TEXT.activities.loading}</Text>
       </View>
     );
@@ -61,14 +67,24 @@ export default function ActivitiesScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Gradient header */}
+      <LinearGradient
+        colors={['rgba(34,211,238,0.1)', 'transparent']}
+        style={styles.headerGradient}
+      />
+
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder={UI_TEXT.activities.search}
-          value={filters.search}
-          onChangeText={(text) => updateFilters({ search: text })}
-        />
+        <View style={styles.searchInputContainer}>
+          <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={UI_TEXT.activities.search}
+            placeholderTextColor={COLORS.textTertiary}
+            value={filters.search}
+            onChangeText={(text) => updateFilters({ search: text })}
+          />
+        </View>
       </View>
 
       {/* Activity List */}
@@ -80,6 +96,7 @@ export default function ActivitiesScreen() {
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
+            <Ionicons name="apps-outline" size={64} color={COLORS.textTertiary} />
             <Text style={styles.emptyText}>{UI_TEXT.activities.noResults}</Text>
           </View>
         }
@@ -87,9 +104,11 @@ export default function ActivitiesScreen() {
       />
 
       {/* Results Count */}
-      <Text style={styles.count}>
-        {filteredActivities.length} / {activities.length} aktivite
-      </Text>
+      <View style={styles.footer}>
+        <Text style={styles.count}>
+          {filteredActivities.length} / {activities.length} aktivite
+        </Text>
+      </View>
     </View>
   );
 }
@@ -97,49 +116,72 @@ export default function ActivitiesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: COLORS.darkBg,
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.darkBg,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#6b7280',
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  headerGradient: {
+    height: 150,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   searchContainer: {
     padding: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: COLORS.darkCard,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomColor: COLORS.darkBorder,
   },
-  searchInput: {
-    backgroundColor: '#f3f4f6',
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.darkBg,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.darkBorder,
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
     fontSize: 16,
+    color: COLORS.textPrimary,
   },
   list: {
     padding: 16,
   },
   empty: {
-    padding: 40,
+    padding: 60,
     alignItems: 'center',
   },
   emptyText: {
+    marginTop: 16,
     fontSize: 16,
-    color: '#6b7280',
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  footer: {
+    padding: 12,
+    backgroundColor: COLORS.darkCard,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.darkBorder,
+    alignItems: 'center',
   },
   count: {
-    textAlign: 'center',
-    padding: 12,
-    fontSize: 14,
-    color: '#6b7280',
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
   },
 });
