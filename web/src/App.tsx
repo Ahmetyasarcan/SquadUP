@@ -31,9 +31,16 @@ function AppRoutes() {
         if (res.data?.user) {
           setUser(res.data.user);
         } else {
-          // If profile fetch fails but auth is valid, fallback to basic user
-          console.error("Profile sync error:", res.error);
-          setUser(null);
+          // If profile fetch fails but auth is valid, fallback to basic user for demo
+          console.warn("Profile sync failed, using fallback from auth session.");
+          setUser({
+            id: user?.id || '',
+            name: user?.user_metadata?.name || user?.email?.split('@')[0] || 'User',
+            email: user?.email || '',
+            interests: [],
+            reliability_score: 1.0,
+            competition_level: 3
+          } as any);
         }
       } else {
         setUser(null);

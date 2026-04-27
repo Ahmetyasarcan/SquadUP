@@ -5,7 +5,8 @@ import { createActivity } from '../services/api';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { UI_TEXT, CATEGORIES, COMPETITION_LEVELS, CATEGORY_ICONS } from '../constants/translations';
-import { PlusCircle, ArrowLeft } from 'lucide-react';
+import { PlusCircle, ArrowLeft, Loader2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import type { Category } from '../types';
 import toast from 'react-hot-toast';
 
@@ -22,6 +23,7 @@ interface FormState {
 }
 
 export default function CreateActivityPage() {
+  const { user: authUser, loading: authLoading } = useAuth();
   const { user, addActivity } = useStore();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -94,20 +96,29 @@ export default function CreateActivityPage() {
   }
 
   // Auth guard
-  if (!user) {
+  if (authLoading || (authUser && !user)) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center">
+        <Loader2 className="w-10 h-10 text-primary-500 animate-spin mb-4" />
+        <p className="text-slate-400 animate-pulse text-sm">Profil bilgileriniz senkronize ediliyor...</p>
+      </div>
+    );
+  }
+
+  if (!authUser) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center px-4 animate-fade-in-up">
         <div className="text-center max-w-sm">
-          <div className="w-16 h-16 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mx-auto mb-4">
-            <PlusCircle className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+          <div className="w-16 h-16 rounded-2xl bg-dark-hover flex items-center justify-center mx-auto mb-4 border border-dark-border">
+            <PlusCircle className="w-8 h-8 text-slate-500" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+          <h2 className="text-xl font-bold text-slate-100 mb-2">
             Giriş Gerekli
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
+          <p className="text-slate-500 mb-6 text-sm">
             Aktivite oluşturmak için önce giriş yapmanız gerekiyor.
           </p>
-          <Button variant="primary" onClick={() => navigate('/login')}>
+          <Button variant="neon" onClick={() => navigate('/login')}>
             Giriş Yap
           </Button>
         </div>

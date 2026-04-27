@@ -1,18 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { createUser, getUsers } from '../services/api';
 import { persistUser } from '../utils/auth';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { UI_TEXT, CATEGORIES, COMPETITION_LEVELS, CATEGORY_ICONS } from '../constants/translations';
-import { User, CheckCircle, ShieldCheck, Mail, Target, Sparkles, Calendar, TrendingUp } from 'lucide-react';
+import { User, CheckCircle, ShieldCheck, Mail, Target, Sparkles, Calendar, TrendingUp, Loader2 } from 'lucide-react';
 import type { Category } from '../types';
 import toast from 'react-hot-toast';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const CATEGORY_OPTIONS: Category[] = ['sports', 'esports', 'board_games', 'outdoor'];
 
 export default function ProfilePage() {
+  const { user: authUser, loading: authLoading } = useAuth();
   const { user, setUser, loading, setLoading } = useStore();
+  const navigate = useNavigate();
 
   const [form, setForm] = useState({
     name: user?.name || '',
@@ -22,6 +26,18 @@ export default function ProfilePage() {
   });
 
   const [saved, setSaved] = useState(false);
+
+  // Sync form when user is loaded
+  useEffect(() => {
+    if (user) {
+      setForm({
+        name: user.name || '',
+        email: user.email || '',
+        interests: user.interests || [],
+        competition_level: user.competition_level || 3,
+      });
+    }
+  }, [user]);
 
   function toggleInterest(cat: string) {
     setForm((prev) => ({
@@ -37,7 +53,6 @@ export default function ProfilePage() {
     setLoading(true);
     setSaved(false);
 
-    // If user already exists, update local state
     if (user) {
       const updatedUser = { ...user, ...form, interests: form.interests as Category[] };
       setUser(updatedUser);
@@ -65,7 +80,6 @@ export default function ProfilePage() {
       toast.dismiss(toastId);
       toast.success('Profil başarıyla oluşturuldu!');
     } else {
-      // Mock error handling for existing email
       if (res.error?.includes("duplicate key")) {
         const users = await getUsers();
         const existing = users.data?.users.find(u => u.email === payload.email);
@@ -85,6 +99,36 @@ export default function ProfilePage() {
       }
     }
     setLoading(false);
+  }
+
+  if (authLoading || (authUser && !user)) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center">
+        <Loader2 className="w-10 h-10 text-primary-500 animate-spin mb-4" />
+        <p className="text-slate-400 animate-pulse text-sm">Profil bilgileriniz yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center px-4 animate-fade-in-up">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl bg-dark-hover flex items-center justify-center mx-auto mb-4 border border-dark-border">
+            <User className="w-8 h-8 text-slate-500" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-100 mb-2">
+            Giriş Gerekli
+          </h2>
+          <p className="text-slate-500 mb-6 text-sm">
+            Profilinizi görüntülemek için önce giriş yapmanız gerekiyor.
+          </p>
+          <Button variant="neon" onClick={() => navigate('/login')}>
+            Giriş Yap
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -111,7 +155,6 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
-          {/* Main Form */}
           <div className="md:col-span-2 space-y-6">
             <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 space-y-5 animate-fade-in-up">
               <Input
@@ -134,7 +177,6 @@ export default function ProfilePage() {
                 required
               />
 
-              {/* Interests */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   {UI_TEXT.profile.interests}
@@ -158,7 +200,6 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Competition level */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
                   Genel Rekabet Seviyesi: <span className="text-primary-600 dark:text-primary-400 font-bold">{COMPETITION_LEVELS[form.competition_level]}</span>
@@ -183,7 +224,6 @@ export default function ProfilePage() {
             </form>
           </div>
 
-          {/* Sidebar Stats */}
           <div className="space-y-4">
             {user ? (
               <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 animate-fade-in">
@@ -193,7 +233,6 @@ export default function ProfilePage() {
                 </h3>
 
                 <div className="space-y-5">
-                  {/* Stat items with icons */}
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
                       <Calendar className="w-5 h-5 text-blue-500" />
@@ -214,7 +253,6 @@ export default function ProfilePage() {
                     </div>
                   </div>
 
-                  {/* Reliability */}
                   <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
                     <p className="text-sm text-gray-500 dark:text-gray-400 flex justify-between items-center mb-2">
                       <span className="flex items-center gap-1.5">
@@ -233,7 +271,6 @@ export default function ProfilePage() {
                     </div>
                   </div>
 
-                  {/* Badges */}
                   {user.badges && user.badges.length > 0 && (
                     <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Kazanılan Rozetler</p>
