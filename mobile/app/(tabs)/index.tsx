@@ -16,7 +16,7 @@ import { useRouter } from 'expo-router';
 import { getActivities, joinActivity, getParticipationStatus } from '../../services/api';
 import { buildActivityPipeline } from '../../utils/filters';
 import ActivityCard from '../../components/ActivityCard';
-import { UI_TEXT } from '../../constants/translations';
+import { UI_TEXT, CATEGORIES } from '../../constants/translations';
 import { COLORS } from '../../constants/colors';
 
 export default function ActivitiesScreen() {
