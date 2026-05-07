@@ -32,6 +32,16 @@ app = Flask(__name__)
 CORS(app)  # Allow cross-origin requests from React web app
 
 # ---------------------------------------------------------------------------
+# Error Logging to File
+# ---------------------------------------------------------------------------
+import logging
+logging.basicConfig(
+    filename='backend_errors.log',
+    level=logging.ERROR,
+    format='%(asctime)s %(levelname)s: %(message)s'
+)
+
+# ---------------------------------------------------------------------------
 # Health Check
 # ---------------------------------------------------------------------------
 @app.route("/api/health", methods=["GET"])
@@ -171,8 +181,21 @@ def get_current_user():
             profile = db.create_user(user_data, auth_id=request.user.id)
             print(f"Auto-created profile for user: {email}")
         except Exception as e:
-            print(f"Failed to auto-create profile: {e}")
-            return jsonify({"error": "Profile could not be synchronized"}), 500
+            error_str = str(e).lower()
+            if "duplicate key" in error_str or "23505" in error_str or "unique constraint" in error_str:
+                # If email already exists (e.g. created via web first, or ID mismatch), just return it
+                profile = db.get_user_by_email(email)
+                if not profile:
+                    return jsonify({"error": "Profile sync failed: Unique constraint but email not found"}), 500
+                print(f"Recovered profile by email due to collision for: {email}")
+            else:
+                print(f"Failed to auto-create profile: {str(e)}")
+                import traceback
+                error_details = traceback.format_exc()
+                print(error_details)
+                import logging
+                logging.error(f"Profile Sync Error: {str(e)}\n{error_details}")
+                return jsonify({"error": f"Profile could not be synchronized: {str(e)}"}), 500
             
     return jsonify({"user": profile}), 200
 
@@ -220,6 +243,30 @@ def create_user():
     try:
         user = db.create_user(body)
         return jsonify({"user": user, "message": "User created successfully"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/users/<user_id>", methods=["GET"])
+def get_user_profile(user_id: str):
+    """Fetch user profile by ID."""
+    profile = db.get_user_by_id(user_id)
+    if not profile:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"user": profile}), 200
+
+
+@app.route("/api/users/<user_id>", methods=["PUT"])
+@token_required
+def api_update_user(user_id: str):
+    """Update user profile. Only self-update allowed."""
+    if request.user.id != user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    body = request.get_json()
+    try:
+        updated = db.update_user(user_id, body)
+        return jsonify({"user": updated, "message": "Profile updated"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -342,6 +389,19 @@ def create_activity():
 
     try:
         activity = db.create_activity(body)
+        
+        # Create a ghost user for this activity to enable group chat (bypass FK constraints on messages table)
+        try:
+            db.create_user({
+                "name": f"Group: {activity['title']}",
+                "email": f"{activity['id']}@squadup.group",
+                "interests": [],
+                "competition_level": 3,
+                "avatar_seed": "group_default"
+            }, auth_id=activity['id'])
+        except Exception as ghost_err:
+            print(f"Warning: Could not create ghost user for activity: {ghost_err}")
+            
         return jsonify({"activity": activity, "message": "Activity created successfully"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -383,12 +443,12 @@ def score_activity(activity_id: str):
 def join_activity(activity_id: str):
     """
     POST /api/activities/<activity_id>/join
-    Registers a user's participation in an activity.
+    Registers a user's request to participate in an activity.
 
     Request body (JSON):
         user_id (str): UUID of user joining
 
-    Response: Created participation record
+    Response: Created participation record (pending)
     """
     body = request.get_json()
     if not body or "user_id" not in body:
@@ -396,12 +456,48 @@ def join_activity(activity_id: str):
 
     try:
         participation = db.join_activity(body["user_id"], activity_id)
+        # We don't increment the count yet since it's pending.
+        activity = db.get_activity_by_id(activity_id)
         return jsonify({
             "participation": participation,
-            "message": "Successfully joined the activity",
+            "message": "Katılım isteğiniz gönderildi! ⏳",
+            "activity_title": activity.get("title", "") if activity else "",
         }), 201
     except ValueError as e:
         return jsonify({"error": str(e)}), 409
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/activities/<activity_id>/participants", methods=["GET"])
+@token_required
+def get_activity_participants(activity_id: str):
+    """Get all approved and pending participants for an activity."""
+    try:
+        data = db.get_activity_requests_and_participants(activity_id)
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/activities/<activity_id>/respond_request", methods=["POST"])
+@token_required
+def respond_activity_request(activity_id: str):
+    """Approve or reject a participation request."""
+    body = request.get_json()
+    participation_id = body.get("participation_id")
+    status = body.get("status")
+
+    if not participation_id or not status:
+        return jsonify({"error": "participation_id and status required"}), 400
+
+    try:
+        creator_id = request.user.id
+        result = db.respond_to_activity_request(participation_id, status, creator_id)
+        return jsonify({
+            "message": "İstek güncellendi",
+            "data": result
+        }), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -412,8 +508,43 @@ def join_activity(activity_id: str):
 @app.route("/api/squads", methods=["GET"])
 def list_squads():
     """List all permanent squads."""
-    squads = db.list_all_squads()
-    return jsonify({"squads": squads, "count": len(squads)}), 200
+    try:
+        squads = db.list_all_squads()
+        return jsonify({"squads": squads, "count": len(squads)}), 200
+    except Exception as e:
+        error_str = str(e).lower()
+        if "relation \"public.squads\" does not exist" in error_str or "42p01" in error_str or "does not exist" in error_str:
+            # Graceful fallback if the squads table hasn't been created in Supabase yet
+            return jsonify({"squads": [], "count": 0, "warning": "Squads table not initialized"}), 200
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/participations", methods=["GET"])
+@token_required
+def get_my_participations():
+    """Get activities the current user has joined."""
+    user_id = request.user.id
+    try:
+        activity_ids = db.get_user_joined_activity_ids(user_id)
+        activities = []
+        for aid in activity_ids:
+            activity = db.get_activity_by_id(aid)
+            if activity:
+                activities.append(activity)
+        
+        return jsonify({"activities": activities, "count": len(activities)}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/participations/status", methods=["GET"])
+@token_required
+def get_participation_status():
+    """Get dict of activity_id -> status for the current user."""
+    user_id = request.user.id
+    try:
+        statuses = db.get_user_all_participations(user_id)
+        return jsonify({"statuses": statuses}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/squads", methods=["POST"])
 @token_required
