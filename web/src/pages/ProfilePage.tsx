@@ -186,18 +186,6 @@ export default function ProfilePage() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="Örn: Ahmet Yılmaz"
                 icon={<User className="w-4 h-4" />}
-                required
-              />
-
-              <Input
-                label="E-posta"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="Örn: ahmet@example.com"
-                icon={<Mail className="w-4 h-4" />}
-                disabled={!!user}
-                required
               />
 
               <div>
