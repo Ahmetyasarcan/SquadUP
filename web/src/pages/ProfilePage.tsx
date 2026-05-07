@@ -5,7 +5,7 @@ import { persistUser } from '../utils/auth';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { UI_TEXT, CATEGORIES, COMPETITION_LEVELS, CATEGORY_ICONS } from '../constants/translations';
-import { User, CheckCircle, ShieldCheck, Mail, Target, Sparkles, Calendar, TrendingUp, Loader2 } from 'lucide-react';
+import { User, CheckCircle, ShieldCheck, Mail, Target, Sparkles, Calendar, TrendingUp, Loader2, Zap } from 'lucide-react';
 import type { Category } from '../types';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
