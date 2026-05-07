@@ -7,7 +7,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string, avatarSeed?: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -21,14 +21,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
+    // 1. Get existing session on load
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for auth changes
+    // 2. Listen for auth state changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth event:', event);
@@ -41,41 +41,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, name: string) => {
+  // -------------------------------------------------------------------------
+  // signUp — same logic as mobile (upsert to avoid duplicate key errors)
+  // -------------------------------------------------------------------------
+  const signUp = async (email: string, password: string, name: string, avatarSeed?: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: {
-          name: name,
-        },
+        data: { name }, // stored in user_metadata
       },
     });
 
     if (error) throw error;
 
-    // Create user profile in users table
+    // Create profile row in public.users (upsert = safe for existing users)
     if (data.user) {
       const { error: profileError } = await supabase
         .from('users')
-        .insert({
-          id: data.user.id,
-          email: email,
-          name: name,
-          interests: [],
-          competition_level: 3,
-          attended_events: 0,
-          joined_events: 0,
-        });
+        .upsert(
+          {
+            id: data.user.id,
+            email,
+            name,
+            interests: [],
+            competition_level: 3,
+            attended_events: 0,
+            joined_events: 0,
+            avatar_seed: avatarSeed,
+          },
+          { onConflict: 'id' }
+        );
 
       if (profileError) {
-        console.error('Profile creation error:', profileError);
+        console.warn('Profile creation warning:', profileError.message);
       }
     }
 
-    toast.success('Kayıt başarılı! Email adresinizi kontrol edin.');
+    toast.success('Kayıt başarılı! 🎉 Email adresinizi onaylayın 📧', { duration: 5000 });
   };
 
+  // -------------------------------------------------------------------------
+  // signIn
+  // -------------------------------------------------------------------------
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -84,36 +92,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (error) throw error;
 
-    toast.success('Giriş başarılı!');
+    toast.success('Hoş Geldin! 👋 Giriş başarılı');
     return data;
   };
 
+  // -------------------------------------------------------------------------
+  // signOut
+  // -------------------------------------------------------------------------
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    toast.success('Çıkış yapıldı');
+    toast.success('Çıkış yapıldı 👋');
   };
 
+  // -------------------------------------------------------------------------
+  // resetPassword
+  // -------------------------------------------------------------------------
   const resetPassword = async (email: string) => {
+    const redirectTo = typeof window !== 'undefined'
+      ? `${window.location.origin}/reset-password`
+      : undefined;
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo,
     });
 
     if (error) throw error;
-    toast.success('Şifre sıfırlama linki email adresinize gönderildi');
+    toast.success('Şifre sıfırlama linki email adresinize gönderildi 📧', { duration: 5000 });
   };
 
   return (
     <AuthContext.Provider
-      value={{
-        user,
-        session,
-        loading,
-        signUp,
-        signIn,
-        signOut,
-        resetPassword,
-      }}
+      value={{ user, session, loading, signUp, signIn, signOut, resetPassword }}
     >
       {children}
     </AuthContext.Provider>

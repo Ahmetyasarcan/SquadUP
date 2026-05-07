@@ -67,7 +67,9 @@ export default function CreateActivityPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!user) {
+    // Use store user id OR auth user id as fallback
+    const creatorId = user?.id || authUser?.id;
+    if (!creatorId) {
       toast.error('Aktivite oluşturmak için giriş yapın');
       navigate('/login');
       return;
@@ -81,7 +83,7 @@ export default function CreateActivityPage() {
     setLoading(true);
     const toastId = toast.loading('Aktivite oluşturuluyor...');
 
-    const res = await createActivity({ ...form, creator_id: user.id });
+    const res = await createActivity({ ...form, creator_id: creatorId });
     setLoading(false);
 
     if (res.data) {
@@ -91,7 +93,7 @@ export default function CreateActivityPage() {
       navigate('/activities');
     } else {
       toast.dismiss(toastId);
-      toast.error(res.error ?? 'Bir hata oluştu');
+      toast.error(res.error ?? 'Bir hata oluştu. Backend çalışıyor mu?');
     }
   }
 

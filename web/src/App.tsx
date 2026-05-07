@@ -18,6 +18,7 @@ import ProfilePage from './pages/ProfilePage';
 import FriendsPage from './pages/FriendsPage';
 import SquadsPage from './pages/SquadsPage';
 import ActivityDetailPage from './pages/ActivityDetailPage';
+import MessagesPage from './pages/MessagesPage';
 
 function AppRoutes() {
   const { user, session, loading: authLoading } = useAuth();
@@ -83,6 +84,9 @@ function AppRoutes() {
       } />
       <Route path="/profile" element={
         <ProtectedRoute><ProfilePage /></ProtectedRoute>
+      } />
+      <Route path="/messages" element={
+        <ProtectedRoute><MessagesPage /></ProtectedRoute>
       } />
     </Routes>
   );

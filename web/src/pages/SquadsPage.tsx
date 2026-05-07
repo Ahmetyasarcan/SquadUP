@@ -61,9 +61,11 @@ export default function SquadsPage() {
   }
 
   const filtered = squads.filter(s => {
+    const name = s.name || '';
+    const desc = s.description || '';
     const matchSearch =
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.description.toLowerCase().includes(search.toLowerCase());
+      name.toLowerCase().includes(search.toLowerCase()) ||
+      desc.toLowerCase().includes(search.toLowerCase());
     const matchCategory = categoryFilter === 'all' || s.category === categoryFilter;
     return matchSearch && matchCategory;
   });

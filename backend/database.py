@@ -52,7 +52,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict]:
 def create_user(user_data: Dict, auth_id: Optional[str] = None) -> Dict:
     """
     Insert a new user into the users table.
-    user_data keys: name, email, interests, competition_level
+    user_data keys: name, email, interests, competition_level, avatar_seed
     auth_id: The UUID from Supabase Auth (optional, for linking).
     """
     client = get_client()
@@ -61,6 +61,7 @@ def create_user(user_data: Dict, auth_id: Optional[str] = None) -> Dict:
         "email": user_data.get("email"),
         "interests": user_data["interests"],
         "competition_level": user_data["competition_level"],
+        "avatar_seed": user_data.get("avatar_seed"),
         "attended_events": 0,
         "joined_events": 0,
     }
@@ -241,6 +242,17 @@ def get_activity_participants(activity_id: str) -> List[Dict]:
 # ---------------------------------------------------------------------------
 # Participation operations
 # ---------------------------------------------------------------------------
+def get_user_all_participations(user_id: str) -> Dict[str, str]:
+    """Return dict of activity_id -> status for all user participations."""
+    client = get_client()
+    result = (
+        client.table("participations")
+        .select("activity_id, status")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return {row["activity_id"]: row["status"] for row in result.data}
+
 def get_user_joined_activity_ids(user_id: str) -> List[str]:
     """Return list of activity IDs the user has joined (non-cancelled)."""
     client = get_client()
@@ -254,24 +266,124 @@ def get_user_joined_activity_ids(user_id: str) -> List[str]:
     return [row["activity_id"] for row in result.data]
 
 
+def get_activity_requests_and_participants(activity_id: str) -> Dict[str, List[Dict]]:
+    """Fetch all pending requests and approved participants for an activity."""
+    client = get_client()
+    result = (
+        client.table("participations")
+        .select("id, status, users(*)")
+        .eq("activity_id", activity_id)
+        .execute()
+    )
+    
+    pending = []
+    approved = []
+    
+    for row in result.data:
+        user_data = row.get("users")
+        if not user_data:
+            continue
+        # Inject participation_id for easy response
+        user_data["participation_id"] = row["id"]
+        
+        if row["status"] == "pending":
+            pending.append(user_data)
+        elif row["status"] in ["joined", "attended"]:
+            approved.append(user_data)
+            
+    return {"pending": pending, "approved": approved}
+
+def respond_to_activity_request(participation_id: str, status: str, creator_id: str) -> Dict:
+    """Accept or reject an activity join request."""
+    client = get_client()
+    if status not in ["joined", "rejected"]:
+        raise ValueError("Invalid status. Must be 'joined' or 'rejected'")
+        
+    # Check if the current user is the creator of the activity
+    part_res = client.table("participations").select("*, activities(creator_id, title)").eq("id", participation_id).execute()
+    if not part_res.data:
+        raise ValueError("Participation request not found")
+        
+    participation = part_res.data[0]
+    activity_data = participation.get("activities", {})
+    if activity_data.get("creator_id") != creator_id:
+        raise ValueError("Only the activity creator can respond to requests")
+
+    if status == "rejected":
+        res = client.table("participations").delete().eq("id", participation_id).execute()
+        
+        # Send rejection notification
+        try:
+            client.table("notifications").insert({
+                "user_id": participation["user_id"],
+                "type": "activity_rejected",
+                "title": "Katılım İsteği Reddedildi",
+                "message": f"\"{activity_data.get('title')}\" etkinliğine katılım isteğiniz reddedildi.",
+                "related_id": participation["activity_id"],
+                "read": False,
+            }).execute()
+        except:
+            pass
+            
+        return {"status": "deleted"}
+    else:
+        # Check capacity again before approving
+        activity_id = participation["activity_id"]
+        activity = get_activity_by_id(activity_id)
+        current_count = get_activity_participant_count(activity_id)
+        if current_count >= activity["max_participants"]:
+            raise ValueError("Activity is already full")
+
+        res = client.table("participations").update({"status": "joined"}).eq("id", participation_id).execute()
+        
+        # Increment user's joined_events counter since they are now officially joined
+        user_id = participation["user_id"]
+        user = update_user_attendance(user_id, attended_delta=0, joined_delta=1)
+
+        # Check for automatic badges
+        if user["joined_events"] >= 3:
+            award_badge(user_id, "active_squadmate")
+        if user["joined_events"] >= 10:
+            award_badge(user_id, "squad_legend")
+            
+        # Send approval notification
+        try:
+            client.table("notifications").insert({
+                "user_id": user_id,
+                "type": "activity_approved",
+                "title": "Katılım İsteği Onaylandı! 🎉",
+                "message": f"\"{activity_data.get('title')}\" etkinliğine katılım isteğiniz onaylandı!",
+                "related_id": activity_id,
+                "read": False,
+            }).execute()
+        except:
+            pass
+
+        return res.data[0]
+
 def join_activity(user_id: str, activity_id: str) -> Dict:
     """
     Create a participation record (user joins activity).
+    Status is initially 'pending' to require creator approval.
     Returns the created participation dict.
-    Raises ValueError if user already joined or activity is full.
+    Raises ValueError if user already requested/joined or activity is full.
+    Also sends a notification to the activity creator.
     """
     client = get_client()
 
-    # Check if already joined
+    # Check if already joined or pending
     existing = (
         client.table("participations")
-        .select("id")
+        .select("id, status")
         .eq("user_id", user_id)
         .eq("activity_id", activity_id)
-        .in_("status", ["joined", "attended"])
+        .in_("status", ["joined", "attended", "pending"])
         .execute()
     )
     if existing.data:
+        status = existing.data[0]["status"]
+        if status == "pending":
+            raise ValueError("Bu etkinlik için onay bekleyen bir isteğiniz zaten var")
         raise ValueError("User has already joined this activity")
 
     # Check capacity
@@ -283,22 +395,34 @@ def join_activity(user_id: str, activity_id: str) -> Dict:
     if current_count >= activity["max_participants"]:
         raise ValueError("Activity is full")
 
-    # Create participation
+    # Create participation as pending
     payload = {
         "user_id": user_id,
         "activity_id": activity_id,
-        "status": "joined",
+        "status": "pending",
     }
     result = client.table("participations").insert(payload).execute()
 
-    # Increment user's joined_events counter
-    user = update_user_attendance(user_id, attended_delta=0, joined_delta=1)
+    # ── Send notification to activity creator (skip if user IS the creator) ──
+    creator_id = activity.get("creator_id")
+    if creator_id and creator_id != user_id:
+        try:
+            # Fetch joiner's display name
+            joiner = get_user_by_id(user_id)
+            joiner_name = joiner.get("name", "Bir kullanıcı") if joiner else "Bir kullanıcı"
+            activity_title = activity.get("title", "Etkinliğiniz")
 
-    # Check for automatic badges
-    if user["joined_events"] >= 3:
-        award_badge(user_id, "active_squadmate")
-    if user["joined_events"] >= 10:
-        award_badge(user_id, "squad_legend")
+            client.table("notifications").insert({
+                "user_id": creator_id,
+                "type": "activity_request",
+                "title": "Yeni Katılım İsteği! 🔔",
+                "message": f"{joiner_name} \"{activity_title}\" etkinliğinize katılmak istiyor.",
+                "related_id": activity_id,
+                "read": False,
+            }).execute()
+        except Exception as notif_err:
+            # Non-fatal: don't block the join if notification fails
+            print(f"Warning: Could not send join notification: {notif_err}")
 
     return result.data[0]
 
@@ -307,15 +431,27 @@ def join_activity(user_id: str, activity_id: str) -> Dict:
 # Squad operations
 # ---------------------------------------------------------------------------
 def list_all_squads() -> List[Dict]:
-    """Fetch all squads with member count."""
+    """Fetch all squads with member count. Returns [] if table is missing."""
     client = get_client()
-    # Fetch squads
-    squads = client.table("squads").select("*").execute().data
-    # Enrich with member count
-    for squad in squads:
-        count_res = client.table("squad_members").select("id", count="exact").eq("squad_id", squad["id"]).execute()
-        squad["member_count"] = count_res.count or 0
-    return squads
+    try:
+        # Fetch squads
+        res = client.table("squads").select("*").execute()
+        squads = res.data if res.data else []
+        
+        # Enrich with member count
+        for squad in squads:
+            try:
+                count_res = client.table("squad_members").select("id", count="exact").eq("squad_id", squad["id"]).execute()
+                squad["member_count"] = count_res.count or 0
+            except:
+                squad["member_count"] = 0
+        return squads
+    except Exception as e:
+        error_str = str(e).lower()
+        if "relation" in error_str and "does not exist" in error_str:
+            print("Warning: squads table not found in Supabase. Returning empty list.")
+            return []
+        raise e
 
 
 def create_squad(squad_data: Dict) -> Dict:

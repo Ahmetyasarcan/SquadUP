@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
-import { Mail, Lock, LogIn } from 'lucide-react';
+import { Mail, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -24,17 +25,17 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signIn(email, password);
-      navigate('/');
+      navigate('/activities');
     } catch (error: any) {
-      console.error('Login error:', error);
-      
-      // Türkçe hata mesajları
-      if (error.message.includes('Invalid login credentials')) {
+      const msg: string = error?.message ?? '';
+      if (msg.includes('Invalid login credentials')) {
         toast.error('Email veya şifre hatalı');
-      } else if (error.message.includes('Email not confirmed')) {
+      } else if (msg.includes('Email not confirmed')) {
         toast.error('Lütfen email adresinizi onaylayın');
+      } else if (msg.includes('Too many requests')) {
+        toast.error('Çok fazla deneme. Lütfen biraz bekleyin');
       } else {
-        toast.error('Giriş yapılamadı: ' + error.message);
+        toast.error('Giriş yapılamadı: ' + msg);
       }
     } finally {
       setLoading(false);
@@ -92,16 +93,23 @@ export default function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-11 pr-4 py-3 bg-dark-card border border-dark-border rounded-lg 
+                  className="w-full pl-11 pr-12 py-3 bg-dark-card border border-dark-border rounded-lg 
                            text-slate-100 placeholder-slate-500
                            focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20
                            transition-all duration-200"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
             </div>
 
@@ -160,7 +168,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="text-center text-slate-500 text-sm mt-8">
-          SquadUp ile aktivite bul, takım kur
+          SquadUp ile aktivite bul, takım kur 🚀
         </p>
       </div>
     </div>

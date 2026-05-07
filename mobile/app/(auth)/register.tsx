@@ -1,390 +1,337 @@
-  import React, { useState } from 'react';
-  import { 
-    View, 
-    Text, 
-    TextInput, 
-    TouchableOpacity, 
-    KeyboardAvoidingView, 
-    Platform, 
-    ScrollView,
-    ActivityIndicator,
-    Dimensions
-  } from 'react-native';
-  import { useRouter, Link } from 'expo-router';
-  import { LinearGradient } from 'expo-linear-gradient';
-  import { 
-    Mail, Lock, User as UserIcon, 
-    ChevronRight, ChevronLeft,
-    CheckCircle2, Inbox
-  } from 'lucide-react-native';
-  import { useStore } from '../../store/useStore';
-  import { registerStep1, registerStep2, checkVerification } from '../../services/api';
-  import { styled } from 'nativewind';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
+import { useAuth } from '../../contexts/AuthContext';
+import { COLORS } from '../../constants/colors';
+import AvatarPicker from '../../components/AvatarPicker';
+import { AVATAR_SEEDS } from '../../utils/avatars';
 
-  const StyledView = styled(View);
-  const StyledText = styled(Text);
-  const StyledTextInput = styled(TextInput);
-  const StyledTouchableOpacity = styled(TouchableOpacity);
-  const StyledKeyboardAvoidingView = styled(KeyboardAvoidingView);
-  const StyledScrollView = styled(ScrollView);
-  const StyledLinearGradient = styled(LinearGradient);
+export default function RegisterScreen() {
+  const { signUp } = useAuth();
 
-  const { width } = Dimensions.get('window');
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    avatar_seed: AVATAR_SEEDS[0],
+  });
+  const [loading, setLoading]           = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const INTEREST_OPTIONS = [
-    { label: 'Futbol', value: 'futbol' },
-    { label: 'Basketbol', value: 'basketbol' },
-    { label: 'Voleybol', value: 'voleybol' },
-    { label: 'Satranç', value: 'satranç' },
-    { label: 'Valorant', value: 'valorant' },
-    { label: 'LoL', value: 'lol' },
-    { label: 'CS2', value: 'csgo' },
-    { label: 'Yürüyüş', value: 'yürüyüş' },
-  ];
+  const update = (key: keyof typeof form) => (val: string) =>
+    setForm(prev => ({ ...prev, [key]: val }));
 
-  export default function RegisterScreen() {
-    const router = useRouter();
-    
-    const [step, setStep] = useState(1); // 1, 1.5, 2, 3
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [userId, setUserId] = useState<string | null>(null);
+  async function handleRegister() {
+    const { name, email, password, confirmPassword } = form;
 
-    const [formData, setFormData] = useState({
-      email: '',
-      password: '',
-      confirmPassword: '',
-      name: '',
-      interests: [] as string[],
-      competition_level: 3,
-    });
+    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
+      Toast.show({ type: 'error', text1: 'Eksik Bilgi', text2: 'Lütfen tüm alanları doldurun' });
+      return;
+    }
 
-    const handleInterestToggle = (interest: string) => {
-      setFormData(prev => ({
-        ...prev,
-        interests: prev.interests.includes(interest)
-          ? prev.interests.filter(i => i !== interest)
-          : [...prev.interests, interest]
-      }));
-    };
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Toast.show({ type: 'error', text1: 'Geçersiz Email', text2: 'Geçerli bir email adresi girin' });
+      return;
+    }
 
-    const handleRegisterStep1 = async () => {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!formData.email || !formData.password || !formData.confirmPassword) {
-        setError('Lütfen tüm alanları doldurun');
-        return;
+    if (password.length < 6) {
+      Toast.show({ type: 'error', text1: 'Şifre Çok Kısa', text2: 'Şifre en az 6 karakter olmalı' });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Toast.show({ type: 'error', text1: 'Şifreler Eşleşmiyor', text2: 'Lütfen aynı şifreyi girin' });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await signUp(email.trim(), password, name.trim(), form.avatar_seed);
+      // signUp shows success toast; redirect to login after a short delay
+      setTimeout(() => router.replace('/(auth)/login'), 2000);
+    } catch (error: any) {
+      const msg: string = error?.message ?? '';
+
+      if (msg.includes('already registered') || msg.includes('already been registered')) {
+        Toast.show({ type: 'error', text1: 'Email Zaten Kayıtlı', text2: 'Bu email adresi zaten kullanılıyor' });
+      } else if (msg.includes('Password should be')) {
+        Toast.show({ type: 'error', text1: 'Şifre Geçersiz', text2: 'Şifre en az 6 karakter olmalı' });
+      } else {
+        Toast.show({ type: 'error', text1: 'Kayıt Başarısız', text2: msg || 'Bir hata oluştu' });
       }
-      if (!emailRegex.test(formData.email)) {
-        setError('Geçerli bir e-posta adresi girin');
-        return;
-      }
-      if (formData.password.length < 6) {
-        setError('Şifre en az 6 karakter olmalıdır');
-        return;
-      }
-      if (formData.password !== formData.confirmPassword) {
-        setError('Şifreler eşleşmiyor');
-        return;
-      }
-
-      setError(null);
-      setIsLoading(true);
-      try {
-        const data = await registerStep1({
-          email: formData.email,
-          password: formData.password
-        });
-        setUserId(data.user_id);
-        setStep(1.5);
-      } catch (err: any) {
-        setError(err.message || 'Kayıt başlatılamadı');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const handleVerifyDone = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await checkVerification({
-          email: formData.email,
-          password: formData.password
-        });
-        if (data.verified) {
-          setStep(2);
-        } else {
-          setError('E-posta henüz onaylanmamış. Lütfen linke tıklayın.');
-        }
-      } catch (err: any) {
-        setError(err.message || 'Doğrulama kontrolü başarısız');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const handleSubmitFinal = async () => {
-      if (formData.interests.length === 0) {
-        setError('En az bir ilgi alanı seçmelisiniz');
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        await registerStep2({
-          user_id: userId,
-          name: formData.name,
-          interests: formData.interests,
-          competition_level: formData.competition_level
-        });
-        router.replace('/login');
-      } catch (err: any) {
-        setError(err.message || 'Profil güncellenemedi');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    return (
-      <StyledKeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
-      >
-        <StyledLinearGradient
-          colors={['#0f172a', '#1e293b', '#334155']}
-          className="flex-1"
-        >
-          <StyledScrollView 
-            contentContainerStyle={{ flexGrow: 1 }}
-            showsVerticalScrollIndicator={false}
-          >
-            <StyledView className="flex-1 px-6 pt-12 pb-8 justify-center">
-              
-              <StyledView className="bg-white rounded-[40px] shadow-2xl p-8 overflow-hidden">
-                {/* Progress Bar */}
-                <StyledView className="h-1.5 w-full bg-gray-100 rounded-full mb-8 overflow-hidden">
-                  <StyledView 
-                    className="h-full bg-primary-600 rounded-full"
-                    style={{ width: `${(step / 3) * 100}%` }}
-                  />
-                </StyledView>
-
-                {/* Step Header */}
-                <StyledView className="items-center mb-8">
-                  <StyledText className="text-3xl font-bold text-gray-900">SquadUp'a Katıl</StyledText>
-                  <StyledText className="text-gray-500 mt-2">
-                    {step === 1 ? 'Hesap Bilgileri' : step === 1.5 ? 'Onay Bekleniyor' : step === 2 ? 'Profil Bilgileri' : 'İlgi Alanları'}
-                  </StyledText>
-                </StyledView>
-
-                {error && (
-                  <StyledView className="bg-red-50 p-4 rounded-2xl mb-6 border border-red-100">
-                    <StyledText className="text-red-600 text-sm font-medium text-center">{error}</StyledText>
-                  </StyledView>
-                )}
-
-                {/* Step 1: Auth */}
-                {step === 1 && (
-                  <StyledView className="space-y-4">
-                    <StyledView className="space-y-2">
-                      <StyledText className="text-sm font-semibold text-gray-700">E-posta</StyledText>
-                      <StyledView className={`flex-row items-center bg-gray-50 rounded-2xl px-4 py-4 border ${
-                        formData.email.length > 0
-                          ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) ? 'border-green-500 bg-green-50' : 'border-red-400 bg-red-50')
-                          : 'border-gray-100'
-                      }`}>
-                        <Mail size={18} color={formData.email.length > 0 ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) ? '#10b981' : '#ef4444') : '#64748b'} />
-                        <StyledTextInput
-                          className="flex-1 ml-3"
-                          placeholder="ornek@email.com"
-                          value={formData.email}
-                          onChangeText={(t) => setFormData({...formData, email: t})}
-                          autoCapitalize="none"
-                          keyboardType="email-address"
-                        />
-                      </StyledView>
-                    </StyledView>
-
-                    <StyledView className="space-y-2">
-                      <StyledText className="text-sm font-semibold text-gray-700">Şifre</StyledText>
-                      <StyledView className={`flex-row items-center bg-gray-50 rounded-2xl px-4 py-4 border ${
-                        formData.password.length > 0
-                          ? (formData.password.length < 6 ? 'border-red-400 bg-red-50' : 'border-green-500 bg-green-50')
-                          : 'border-gray-100'
-                      }`}>
-                        <Lock size={18} color={formData.password.length > 0 ? (formData.password.length < 6 ? '#ef4444' : '#10b981') : '#64748b'} />
-                        <StyledTextInput
-                          className="flex-1 ml-3"
-                          placeholder="••••••••"
-                          value={formData.password}
-                          onChangeText={(t) => setFormData({...formData, password: t})}
-                          secureTextEntry
-                        />
-                      </StyledView>
-                    </StyledView>
-
-                    <StyledView className="space-y-2">
-                      <StyledText className="text-sm font-semibold text-gray-700">Şifre Tekrar</StyledText>
-                      <StyledView className={`flex-row items-center bg-gray-50 rounded-2xl px-4 py-4 border ${
-                        formData.confirmPassword.length > 0
-                          ? (formData.confirmPassword !== formData.password ? 'border-red-400 bg-red-50' : 'border-green-500 bg-green-50')
-                          : 'border-gray-100'
-                      }`}>
-                        <Lock size={18} color={formData.confirmPassword.length > 0 ? (formData.confirmPassword !== formData.password ? '#ef4444' : '#10b981') : '#64748b'} />
-                        <StyledTextInput
-                          className="flex-1 ml-3"
-                          placeholder="••••••••"
-                          value={formData.confirmPassword}
-                          onChangeText={(t) => setFormData({...formData, confirmPassword: t})}
-                          secureTextEntry
-                        />
-                      </StyledView>
-                    </StyledView>
-
-                    <StyledTouchableOpacity 
-                      onPress={handleRegisterStep1}
-                      disabled={isLoading}
-                      className="bg-primary-600 py-5 rounded-3xl flex-row items-center justify-center mt-4 shadow-lg shadow-primary-500/30"
-                    >
-                      {isLoading ? (
-                        <ActivityIndicator color="white" />
-                      ) : (
-                        <>
-                          <StyledText className="text-white font-bold text-lg mr-2">E-posta Doğrula</StyledText>
-                          <ChevronRight size={20} color="white" />
-                        </>
-                      )}
-                    </StyledTouchableOpacity>
-                  </StyledView>
-                )}
-
-                {/* Step 1.5: Verification Pending */}
-                {step === 1.5 && (
-                  <StyledView className="items-center space-y-6">
-                    <StyledView className="w-20 h-20 bg-blue-50 rounded-full items-center justify-center mb-2">
-                      <Inbox size={40} color="#2563eb" />
-                    </StyledView>
-                    <StyledText className="text-xl font-bold text-gray-900 text-center">E-postanı Onayla</StyledText>
-                    <StyledText className="text-gray-500 text-center leading-5">
-                      {formData.email} adresine bir onay linki gönderdik. Lütfen onayladıktan sonra devam et.
-                    </StyledText>
-                    
-                    <StyledTouchableOpacity 
-                      onPress={() => setStep(2)}
-                      className="w-full bg-green-600 py-5 rounded-3xl flex-row items-center justify-center mt-4"
-                    >
-                      <StyledText className="text-white font-bold text-lg mr-2">Onayladım, Devam Et</StyledText>
-                      <CheckCircle2 size={20} color="white" />
-                    </StyledTouchableOpacity>
-
-                    <StyledTouchableOpacity onPress={() => setStep(1)}>
-                      <StyledText className="text-primary-600 font-semibold">Bilgileri Düzenle</StyledText>
-                    </StyledTouchableOpacity>
-                  </StyledView>
-                )}
-
-                {/* Step 2: Profile */}
-                {step === 2 && (
-                  <StyledView className="space-y-6">
-                    <StyledView className="space-y-2">
-                      <StyledText className="text-sm font-semibold text-gray-700">Ad Soyad</StyledText>
-                      <StyledView className="flex-row items-center bg-gray-50 rounded-2xl px-4 py-4 border border-gray-100">
-                        <UserIcon size={18} color="#64748b" />
-                        <StyledTextInput
-                          className="flex-1 ml-3"
-                          placeholder="Ahmet Yılmaz"
-                          value={formData.name}
-                          onChangeText={(t) => setFormData({...formData, name: t})}
-                        />
-                      </StyledView>
-                    </StyledView>
-
-                    <StyledView className="space-y-4">
-                      <StyledText className="text-sm font-semibold text-gray-700 text-center">Rekabet Seviyen (1-5)</StyledText>
-                      <StyledView className="flex-row justify-between">
-                        {[1, 2, 3, 4, 5].map((level) => (
-                          <StyledTouchableOpacity
-                            key={level}
-                            onPress={() => setFormData({...formData, competition_level: level})}
-                            className={`w-12 h-12 rounded-2xl items-center justify-center ${
-                              formData.competition_level === level ? 'bg-primary-600 shadow-md' : 'bg-gray-50'
-                            }`}
-                          >
-                            <StyledText className={`font-bold ${formData.competition_level === level ? 'text-white' : 'text-gray-400'}`}>
-                              {level}
-                            </StyledText>
-                          </StyledTouchableOpacity>
-                        ))}
-                      </StyledView>
-                    </StyledView>
-
-                    <StyledTouchableOpacity 
-                      onPress={() => setStep(3)}
-                      className="bg-primary-600 py-5 rounded-3xl flex-row items-center justify-center mt-4"
-                    >
-                      <StyledText className="text-white font-bold text-lg mr-2">Devam Et</StyledText>
-                      <ChevronRight size={20} color="white" />
-                    </StyledTouchableOpacity>
-                  </StyledView>
-                )}
-
-                {/* Step 3: Interests */}
-                {step === 3 && (
-                  <StyledView className="space-y-6">
-                    <StyledView className="flex-row flex-wrap gap-2 justify-center">
-                      {INTEREST_OPTIONS.map((option) => (
-                        <StyledTouchableOpacity
-                          key={option.value}
-                          onPress={() => handleInterestToggle(option.value)}
-                          className={`px-4 py-3 rounded-2xl border-2 ${
-                            formData.interests.includes(option.value)
-                              ? 'bg-primary-600 border-primary-600'
-                              : 'bg-white border-gray-100'
-                          }`}
-                        >
-                          <StyledText className={`text-xs font-bold ${
-                            formData.interests.includes(option.value) ? 'text-white' : 'text-gray-600'
-                          }`}>
-                            {option.label}
-                          </StyledText>
-                        </StyledTouchableOpacity>
-                      ))}
-                    </StyledView>
-
-                    <StyledTouchableOpacity 
-                      onPress={handleSubmitFinal}
-                      disabled={isLoading}
-                      className="bg-primary-600 py-5 rounded-3xl flex-row items-center justify-center mt-4 shadow-lg shadow-primary-500/30"
-                    >
-                      {isLoading ? (
-                        <ActivityIndicator color="white" />
-                      ) : (
-                        <>
-                          <StyledText className="text-white font-bold text-lg mr-2">Kaydı Tamamla</StyledText>
-                          <CheckCircle2 size={20} color="white" />
-                        </>
-                      )}
-                    </StyledTouchableOpacity>
-                  </StyledView>
-                )}
-
-                {/* Footer */}
-                <StyledView className="mt-8 pt-6 border-t border-gray-100 items-center">
-                  <StyledText className="text-gray-500 text-sm">
-                    Zaten hesabın var mı?{' '}
-                    <StyledText 
-                      onPress={() => router.push('/login')}
-                      className="text-primary-600 font-bold"
-                    >
-                      Giriş Yap
-                    </StyledText>
-                  </StyledText>
-                </StyledView>
-
-              </StyledView>
-            </StyledView>
-          </StyledScrollView>
-        </StyledLinearGradient>
-      </StyledKeyboardAvoidingView>
-    );
+    } finally {
+      setLoading(false);
+    }
   }
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      {/* Background orbs */}
+      <View style={styles.bg}>
+        <View style={[styles.orb, styles.orb1]} />
+        <View style={[styles.orb, styles.orb2]} />
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Logo */}
+        <View style={styles.logoWrap}>
+          <LinearGradient
+            colors={[COLORS.secondary, COLORS.primaryLight]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.logo}
+          >
+            <Text style={styles.logoLetter}>S</Text>
+          </LinearGradient>
+          <Text style={styles.appName}>Kayıt Ol</Text>
+          <Text style={styles.subtitle}>Aktivite dünyasına katıl 🎯</Text>
+        </View>
+
+        {/* Avatar Picker */}
+        <AvatarPicker 
+          currentSeed={form.avatar_seed} 
+          onSelect={(seed) => setForm({ ...form, avatar_seed: seed })} 
+        />
+
+        {/* Card */}
+        <View style={styles.card}>
+
+          {/* Name */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Kullanıcı Adı</Text>
+            <View style={styles.inputRow}>
+              <Ionicons name="person-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="squad_player"
+                placeholderTextColor={COLORS.textTertiary}
+                value={form.name}
+                onChangeText={update('name')}
+                autoCapitalize="words"
+              />
+            </View>
+          </View>
+
+          {/* Email */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Email</Text>
+            <View style={styles.inputRow}>
+              <Ionicons name="mail-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="email@example.com"
+                placeholderTextColor={COLORS.textTertiary}
+                value={form.email}
+                onChangeText={update('email')}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
+
+          {/* Password */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Şifre</Text>
+            <View style={styles.inputRow}>
+              <Ionicons name="lock-closed-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="••••••••"
+                placeholderTextColor={COLORS.textTertiary}
+                value={form.password}
+                onChangeText={update('password')}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity onPress={() => setShowPassword(p => !p)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons
+                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                  size={20}
+                  color={COLORS.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.hint}>En az 6 karakter</Text>
+          </View>
+
+          {/* Confirm Password */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Şifre Tekrar</Text>
+            <View style={[
+              styles.inputRow,
+              form.confirmPassword.length > 0 && {
+                borderColor: form.confirmPassword === form.password
+                  ? COLORS.success
+                  : COLORS.error,
+              },
+            ]}>
+              <Ionicons name="lock-closed-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="••••••••"
+                placeholderTextColor={COLORS.textTertiary}
+                value={form.confirmPassword}
+                onChangeText={update('confirmPassword')}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              {form.confirmPassword.length > 0 && (
+                <Ionicons
+                  name={form.confirmPassword === form.password ? 'checkmark-circle' : 'close-circle'}
+                  size={20}
+                  color={form.confirmPassword === form.password ? COLORS.success : COLORS.error}
+                />
+              )}
+            </View>
+          </View>
+
+          {/* Register Button */}
+          <TouchableOpacity onPress={handleRegister} disabled={loading} activeOpacity={0.8}>
+            <LinearGradient
+              colors={[COLORS.secondary, COLORS.primary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.btn}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="person-add-outline" size={20} color="#fff" />
+                  <Text style={styles.btnText}>Kayıt Ol</Text>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.divider}>
+            <View style={styles.divLine} />
+            <Text style={styles.divText}>veya</Text>
+            <View style={styles.divLine} />
+          </View>
+
+          {/* Login link */}
+          <View style={styles.loginRow}>
+            <Text style={styles.loginText}>Zaten hesabın var mı? </Text>
+            <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
+              <Text style={styles.loginLink}>Giriş Yap</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.darkBg },
+  bg:        { ...StyleSheet.absoluteFillObject },
+  orb: {
+    position: 'absolute',
+    borderRadius: 999,
+    opacity: 0.25,
+  },
+  orb1: {
+    top: 60, right: -60,
+    width: 260, height: 260,
+    backgroundColor: COLORS.secondary,
+  },
+  orb2: {
+    bottom: 80, left: -60,
+    width: 300, height: 300,
+    backgroundColor: COLORS.primary,
+  },
+  scroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  logoWrap: { alignItems: 'center', marginBottom: 32 },
+  logo: {
+    width: 80, height: 80,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: COLORS.secondary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  logoLetter: { fontSize: 40, fontWeight: '900', color: '#fff' },
+  appName:    { fontSize: 32, fontWeight: '900', color: COLORS.primaryLight, marginBottom: 6 },
+  subtitle:   { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center' },
+
+  card: {
+    backgroundColor: COLORS.darkCard + 'CC',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: COLORS.darkBorder,
+  },
+  field: { marginBottom: 18 },
+  label: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 8 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.darkBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.darkBorder,
+    paddingHorizontal: 14,
+    height: 50,
+  },
+  inputIcon: { marginRight: 10 },
+  input:     { flex: 1, fontSize: 16, color: COLORS.textPrimary },
+  hint:      { fontSize: 12, color: COLORS.textTertiary, marginTop: 4 },
+
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 8,
+    shadowColor: COLORS.secondary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  btnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
+  divLine: { flex: 1, height: 1, backgroundColor: COLORS.darkBorder },
+  divText: { marginHorizontal: 16, fontSize: 14, color: COLORS.textSecondary },
+
+  loginRow:  { flexDirection: 'row', justifyContent: 'center' },
+  loginText: { fontSize: 14, color: COLORS.textSecondary },
+  loginLink: { fontSize: 14, color: COLORS.primaryLight, fontWeight: '700' },
+});

@@ -354,12 +354,13 @@ export const MOCK_RECOMMENDATIONS: Activity[] = MOCK_ACTIVITIES.map((a, i) => ({
   score: a.match_score,
   match_result: {
     final_score: a.match_score ?? 0.7,
-    label:
+    label: (
       (a.match_score ?? 0) >= 0.9
         ? 'perfect_match'
         : (a.match_score ?? 0) >= 0.75
         ? 'good_match'
-        : 'low_match',
+        : 'low_match'
+    ) as 'perfect_match' | 'good_match' | 'low_match',
     breakdown: {
       interest: {
         score: Math.min(1, (a.match_score ?? 0.7) + 0.05),

@@ -16,6 +16,7 @@ export interface User {
   reliability_score: number;
   badges?: string[];
   squads?: string[];
+  avatar_seed?: string;
   created_at: string;
 }
 

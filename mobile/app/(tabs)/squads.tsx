@@ -6,9 +6,9 @@ import {
   TextInput, 
   StyleSheet, 
   ActivityIndicator, 
-  TouchableOpacity,
-  SafeAreaView
+  TouchableOpacity
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../store/useStore';
@@ -29,8 +29,8 @@ export default function SquadsScreen() {
     setLoading(true);
     try {
       const res = await getSquads();
-      if (res.data) {
-        setSquads(res.data.squads);
+      if (res && res.squads) {
+        setSquads(res.squads);
       }
     } catch (e) {
       console.error(e);
@@ -39,16 +39,18 @@ export default function SquadsScreen() {
     }
   }
 
-  const filtered = squads.filter(s => 
-    s.name.toLowerCase().includes(search.toLowerCase()) || 
-    s.description?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = squads.filter(s => {
+    const name = s.name || s.title || '';
+    const desc = s.description || '';
+    return name.toLowerCase().includes(search.toLowerCase()) || 
+           desc.toLowerCase().includes(search.toLowerCase());
+  });
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Squads</Text>
-        <Text style={styles.subtitle}>Kalıcı ekipler kur, beraber oyna.</Text>
+        <Text style={styles.title}>Katılımlarım</Text>
+        <Text style={styles.subtitle}>Katıldığın ve takip ettiğin etkinlikler.</Text>
       </View>
 
       <View style={styles.searchContainer}>
@@ -56,7 +58,7 @@ export default function SquadsScreen() {
           <Ionicons name="search" size={20} color={COLORS.textSecondary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Squad ara..."
+            placeholder="Aktivite ara..."
             placeholderTextColor={COLORS.textTertiary}
             value={search}
             onChangeText={setSearch}
@@ -77,23 +79,25 @@ export default function SquadsScreen() {
             <TouchableOpacity style={styles.card}>
               <View style={styles.cardHeader}>
                 <View style={styles.iconContainer}>
-                  <Ionicons name="people" size={24} color={COLORS.primaryLight} />
+                  <Ionicons 
+                    name={item.category === 'sports' ? 'football' : 'game-controller'} 
+                    size={24} 
+                    color={COLORS.primaryLight} 
+                  />
                 </View>
-                <View style={styles.memberBadge}>
-                  <Ionicons name="shield-checkmark" size={12} color="#10b981" />
-                  <Text style={styles.memberBadgeText}>{item.member_count} Üye</Text>
+                <View style={[styles.memberBadge, { backgroundColor: COLORS.success + '22' }]}>
+                  <Ionicons name="checkmark-circle" size={12} color={COLORS.success} />
+                  <Text style={[styles.memberBadgeText, { color: COLORS.success }]}>Katılındı</Text>
                 </View>
               </View>
               
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
+              <Text style={styles.cardTitle}>{item.name || item.title}</Text>
+              <Text style={styles.cardDesc} numberOfLines={2}>{item.description || item.location}</Text>
 
-              <TouchableOpacity 
-                style={styles.joinBtn}
-                onPress={() => {/* Join Logic */}}
-              >
-                <Text style={styles.joinBtnText}>Katıl</Text>
-              </TouchableOpacity>
+              <View style={styles.dateContainer}>
+                <Ionicons name="calendar-outline" size={14} color={COLORS.textTertiary} />
+                <Text style={styles.dateText}>{item.datetime ? new Date(item.datetime).toLocaleDateString('tr-TR') : 'Belirtilmedi'}</Text>
+              </View>
             </TouchableOpacity>
           )}
         />
@@ -177,33 +181,32 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   memberBadgeText: {
-    color: '#10b981',
     fontSize: 10,
     fontWeight: '700',
+    marginLeft: 4,
   },
   cardTitle: {
+    color: COLORS.textPrimary,
     fontSize: 18,
     fontWeight: '700',
-    color: COLORS.textPrimary,
     marginBottom: 4,
   },
   cardDesc: {
-    fontSize: 13,
     color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
     marginBottom: 16,
   },
-  joinBtn: {
-    backgroundColor: COLORS.darkBg,
-    paddingVertical: 8,
-    borderRadius: 10,
+  dateContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.darkBorder,
+    gap: 6,
+    marginTop: 'auto',
   },
-  joinBtnText: {
-    color: COLORS.primaryLight,
-    fontWeight: '700',
-    fontSize: 14,
+  dateText: {
+    color: COLORS.textTertiary,
+    fontSize: 12,
+    fontWeight: '500',
   },
   center: {
     flex: 1,

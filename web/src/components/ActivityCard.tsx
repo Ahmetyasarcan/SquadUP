@@ -8,6 +8,7 @@ import Button from './ui/Button';
 
 interface ActivityCardProps {
   activity: Activity;
+  userStatus?: string; // 'pending' | 'joined' | 'attended' | undefined
   onPress?: () => void;
   onJoin?: () => void;
   showMatchScore?: boolean;
@@ -15,6 +16,7 @@ interface ActivityCardProps {
 
 export default function ActivityCard({
   activity,
+  userStatus,
   onPress,
   onJoin,
   showMatchScore = false,
@@ -102,15 +104,19 @@ export default function ActivityCard({
         {/* Join Button */}
         {onJoin && (
           <Button
-            variant={isFull ? 'ghost' : 'neon'}
+            variant={userStatus === 'joined' ? 'ghost' : userStatus === 'pending' ? 'secondary' : isFull ? 'ghost' : 'neon'}
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
+              if (userStatus === 'pending' || userStatus === 'joined') return;
               onJoin();
             }}
-            disabled={isFull}
+            disabled={isFull || userStatus === 'pending' || userStatus === 'joined'}
             className="w-full"
           >
-            {isFull ? 'Dolu' : 'Katıl'}
+            {userStatus === 'joined' ? 'Katıldın ✅' :
+             userStatus === 'pending' ? 'İstek Gönderildi ⏳' :
+             isFull ? 'Dolu' : 'Katıl'}
           </Button>
         )}
       </div>

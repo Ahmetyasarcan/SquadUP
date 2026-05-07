@@ -2,186 +2,335 @@ import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
-  FlatList, 
   TextInput, 
   StyleSheet, 
   ActivityIndicator, 
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
-  Alert
+  Alert,
+  Image
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useStore } from '../../store/useStore';
-import { searchUsers, sendFriendRequest, getFriends, respondToFriendRequest } from '../../services/api';
+import { 
+  searchUsers, sendFriendRequest, getFriends, 
+  getFriendRequests, acceptFriendRequest, 
+  rejectFriendRequest, getRealUserSuggestions 
+} from '../../services/socialApi';
+import { mixRealAndMockUsers, normalizeRealUser } from '../../utils/mockData';
 import { COLORS } from '../../constants/colors';
+import { useAuth } from '../../contexts/AuthContext';
+import Toast from 'react-native-toast-message';
+
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback } from 'react';
+
+type Tab = 'suggestions' | 'friends' | 'requests' | 'search';
 
 export default function FriendsScreen() {
-  const [friendsData, setFriendsData] = useState<{
-    friends: any[];
-    pending_incoming: any[];
-    pending_outgoing: any[];
-  }>({ friends: [], pending_incoming: [], pending_outgoing: [] });
+  const { user } = useAuth();
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>('suggestions');
   
-  const [search, setSearch] = useState('');
+  const [friends, setFriends] = useState<any[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [loading, setLoading] = useState(true);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    loadFriends();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadAll();
+    }, [user])
+  );
+
+  async function loadAll() {
+    await Promise.all([loadFriends(), loadRequests(), loadSuggestions()]);
+  }
 
   async function loadFriends() {
-    setLoading(true);
+    if (!user) return;
     try {
-      const res = await getFriends();
-      setFriendsData(res);
-    } catch (e) {
-      console.error(e);
+      const data = await getFriends();
+      setFriends(data);
+    } catch { /* fail silently */ }
+  }
+
+  async function loadRequests() {
+    if (!user) return;
+    try {
+      const data = await getFriendRequests();
+      setRequests(data);
+    } catch { /* fail silently */ }
+  }
+
+  async function loadSuggestions() {
+    setLoadingSuggestions(true);
+    try {
+      const realUsers = await getRealUserSuggestions();
+      const normalized = realUsers.map(normalizeRealUser);
+      setSuggestions(mixRealAndMockUsers(normalized, 0.5));
+    } catch {
+      const { MOCK_SOCIAL_USERS } = require('../../utils/mockData');
+      setSuggestions(MOCK_SOCIAL_USERS);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }
+
+  async function handleSearch() {
+    if (!searchQuery.trim()) return;
+    setLoading(true);
+    setTab('search');
+    try {
+      const data = await searchUsers(searchQuery);
+      if (data.length > 0) {
+        setSearchResults(data);
+      } else {
+        const { MOCK_SOCIAL_USERS } = require('../../utils/mockData');
+        const q = searchQuery.toLowerCase();
+        setSearchResults(MOCK_SOCIAL_USERS.filter((u: any) =>
+          u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+        ));
+      }
+    } catch {
+      Toast.show({ type: 'error', text1: 'Arama yapılamadı' });
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleSearch() {
-    if (!search.trim()) return;
-    setSearching(true);
-    try {
-      const res = await searchUsers(search);
-      setSearchResults(res.users);
-    } catch (e) {
-      Alert.alert('Hata', 'Kullanıcı aranırken bir hata oluştu');
-    } finally {
-      setSearching(false);
+  async function handleSendRequest(userId: string, userName: string) {
+    if (userId.startsWith('mock-')) {
+      Toast.show({ type: 'info', text1: 'Bu kullanıcı demo verisidir 😊' });
+      return;
     }
-  }
-
-  async function handleSendRequest(friendId: string) {
     try {
-      await sendFriendRequest(friendId);
-      Alert.alert('Başarılı', 'Arkadaşlık isteği gönderildi');
-      loadFriends();
+      await sendFriendRequest(userId);
+      setSentRequests(prev => new Set([...prev, userId]));
+      Toast.show({ type: 'success', text1: `${userName} kişisine istek gönderildi!` });
     } catch (e: any) {
-      Alert.alert('Hata', e.message || 'İstek gönderilemedi');
+      if (e?.message?.includes('duplicate') || e?.code === '23505') {
+        Toast.show({ type: 'error', text1: 'Zaten istek gönderilmiş' });
+      } else {
+        console.error('Send request error:', e);
+        Toast.show({ type: 'error', text1: 'Hata: ' + (e?.message || 'İstek gönderilemedi') });
+      }
     }
   }
 
-  async function handleRespond(requestId: string, status: 'accepted' | 'rejected') {
+  async function handleAccept(requestId: string, name: string) {
     try {
-      await respondToFriendRequest(requestId, status);
-      loadFriends();
-    } catch (e) {
-      Alert.alert('Hata', 'İşlem başarısız');
+      await acceptFriendRequest(requestId);
+      Toast.show({ type: 'success', text1: `${name} artık arkadaşın! 🎉` });
+      await loadAll();
+    } catch { 
+      Toast.show({ type: 'error', text1: 'İstek kabul edilemedi' }); 
     }
   }
+
+  async function handleReject(requestId: string) {
+    try {
+      await rejectFriendRequest(requestId);
+      setRequests(prev => prev.filter(r => r.id !== requestId));
+      Toast.show({ type: 'info', text1: 'İstek reddedildi' });
+    } catch { 
+      Toast.show({ type: 'error', text1: 'İşlem başarısız' }); 
+    }
+  }
+
+  const isAlreadyFriend = (id: string) => friends.some((f: any) => f.friend?.id === id);
+  const hasSentRequest = (id: string) => sentRequests.has(id);
+
+  function getReliabilityColor(score: number) {
+    if (score >= 0.9) return '#34d399';
+    if (score >= 0.75) return COLORS.primaryLight;
+    return '#fbbf24';
+  }
+
+  const renderUserCard = (userItem: any, actionView: React.ReactNode, isMock: boolean = false) => {
+    const initial = (userItem?.name || '?').charAt(0).toUpperCase();
+    return (
+      <View style={styles.card} key={userItem.id}>
+        <View style={styles.cardHeader}>
+          {userItem.avatar ? (
+            <Image source={{ uri: userItem.avatar }} style={styles.avatarImg} />
+          ) : (
+            <View style={styles.avatarTextContainer}>
+              <Text style={styles.avatarText}>{initial}</Text>
+            </View>
+          )}
+          <View style={styles.userInfo}>
+            <View style={styles.nameRow}>
+              <Text style={styles.userName} numberOfLines={1}>{userItem.name}</Text>
+              {isMock && <Text style={styles.mockBadge}>✨ Öneri</Text>}
+            </View>
+            <Text style={styles.userEmail} numberOfLines={1}>{userItem.email}</Text>
+            
+            {userItem.reliability_score != null && (
+              <View style={styles.scoreRow}>
+                <Ionicons name="shield-checkmark" size={12} color={getReliabilityColor(userItem.reliability_score)} />
+                <Text style={[styles.scoreText, { color: getReliabilityColor(userItem.reliability_score) }]}>
+                  %{Math.round(userItem.reliability_score * 100)} Güvenilirlik
+                </Text>
+              </View>
+            )}
+            
+            {userItem.common_activities?.length > 0 && (
+              <Text style={styles.commonActivitiesText}>
+                🎮 {userItem.common_activities.join(', ')}
+              </Text>
+            )}
+          </View>
+        </View>
+        <View style={styles.cardAction}>
+          {actionView}
+        </View>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Arkadaşlar</Text>
+        <View style={styles.headerTitleRow}>
+          <View style={styles.iconContainer}>
+            <Ionicons name="people" size={24} color="#fff" />
+          </View>
+          <Text style={styles.title}>Arkadaşlar</Text>
+        </View>
       </View>
 
-      <ScrollView style={styles.content}>
-        {/* Search */}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Search Bar */}
         <View style={styles.searchSection}>
           <View style={styles.searchInputContainer}>
-            <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+            <Ionicons name="search" size={20} color={COLORS.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              placeholder="İsim veya e-posta..."
+              placeholder="Kullanıcı ara..."
               placeholderTextColor={COLORS.textTertiary}
-              value={search}
-              onChangeText={setSearch}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
               onSubmitEditing={handleSearch}
             />
-            {searching && <ActivityIndicator size="small" color={COLORS.primaryLight} />}
+            {loading && <ActivityIndicator size="small" color={COLORS.primaryLight} />}
           </View>
+        </View>
 
-          {searchResults.length > 0 && (
-            <View style={styles.resultsContainer}>
-              {searchResults.map((item) => {
-                const isFriend = friendsData.friends.some(f => f.id === item.id);
-                const isPending = friendsData.pending_outgoing.some(f => f.id === item.id) || 
-                                friendsData.pending_incoming.some(f => f.id === item.id);
+        {/* Tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer} contentContainerStyle={styles.tabsContent}>
+          {[
+            { id: 'suggestions', label: 'Öneriler' },
+            { id: 'friends', label: `Arkadaşlar (${friends.length})` },
+            { id: 'requests', label: `İstekler (${requests.length})` },
+            { id: 'search', label: 'Arama' }
+          ].map((t) => (
+            <TouchableOpacity 
+              key={t.id} 
+              style={[styles.tabButton, tab === t.id && styles.tabButtonActive]}
+              onPress={() => setTab(t.id as Tab)}
+            >
+              <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-                return (
-                  <View key={item.id} style={styles.resultItem}>
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
-                    </View>
-                    <View style={styles.userInfo}>
-                      <Text style={styles.userName}>{item.name}</Text>
-                      <Text style={styles.userEmail}>{item.email}</Text>
-                    </View>
-                    {isFriend ? (
-                      <Ionicons name="checkmark-circle" size={24} color="#10b981" />
-                    ) : isPending ? (
-                      <Ionicons name="time" size={24} color="#f59e0b" />
-                    ) : (
-                      <TouchableOpacity 
-                        style={styles.addBtn}
-                        onPress={() => handleSendRequest(item.id)}
-                      >
-                        <Ionicons name="person-add" size={20} color={COLORS.primaryLight} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
+        <View style={styles.tabContent}>
+          {/* Suggestions Tab */}
+          {tab === 'suggestions' && (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionSubtitle}>GERÇEK + ÖNERİ KULLANICILAR</Text>
+                <TouchableOpacity onPress={loadSuggestions} disabled={loadingSuggestions}>
+                  <Ionicons name="refresh" size={18} color={COLORS.primaryLight} />
+                </TouchableOpacity>
+              </View>
+              {loadingSuggestions && <ActivityIndicator style={{marginTop: 20}} color={COLORS.primaryLight} />}
+              {!loadingSuggestions && suggestions.map(u => renderUserCard(
+                u,
+                isAlreadyFriend(u.id) ? (
+                  <Text style={styles.statusText}><Ionicons name="checkmark" /> Arkadaşsınız</Text>
+                ) : hasSentRequest(u.id) ? (
+                  <Text style={styles.statusTextWarn}><Ionicons name="time" /> İstek Gönderildi</Text>
+                ) : (
+                  <TouchableOpacity style={styles.primaryBtn} onPress={() => handleSendRequest(u.id, u.name)}>
+                    <Text style={styles.primaryBtnText}>{u.isMock ? 'Demo Kullanıcı' : 'Arkadaş Ekle'}</Text>
+                  </TouchableOpacity>
+                ),
+                !!u.isMock
+              ))}
+            </>
+          )}
+
+          {/* Friends Tab */}
+          {tab === 'friends' && (
+            <>
+              {friends.length === 0 && <Text style={styles.emptyText}>Henüz arkadaşın yok.</Text>}
+              {friends.map(f => renderUserCard(
+                f.friend,
+                <TouchableOpacity 
+                  style={styles.secondaryBtn}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/(tabs)/messages',
+                      params: {
+                        userId: f.friend.id,
+                        userName: f.friend.name,
+                        userEmail: f.friend.email
+                      }
+                    });
+                  }}
+                >
+                  <Text style={styles.secondaryBtnText}>Mesaj Gönder</Text>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+
+          {/* Requests Tab */}
+          {tab === 'requests' && (
+            <>
+              {requests.length === 0 && <Text style={styles.emptyText}>Bekleyen istek yok.</Text>}
+              {requests.map(r => renderUserCard(
+                r.requester,
+                <View style={{flexDirection: 'row', gap: 8}}>
+                  <TouchableOpacity style={[styles.primaryBtn, {flex: 1}]} onPress={() => handleAccept(r.id, r.requester?.name)}>
+                    <Text style={styles.primaryBtnText}>Kabul Et</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.secondaryBtn, {flex: 1}]} onPress={() => handleReject(r.id)}>
+                    <Text style={styles.secondaryBtnText}>Reddet</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </>
+          )}
+
+          {/* Search Tab */}
+          {tab === 'search' && (
+            <>
+              {searchResults.length === 0 && <Text style={styles.emptyText}>Sonuç bulunamadı.</Text>}
+              {searchResults.map(u => renderUserCard(
+                u,
+                isAlreadyFriend(u.id) ? (
+                  <Text style={styles.statusText}><Ionicons name="checkmark" /> Arkadaşsınız</Text>
+                ) : hasSentRequest(u.id) ? (
+                  <Text style={styles.statusTextWarn}><Ionicons name="time" /> İstek Gönderildi</Text>
+                ) : (
+                  <TouchableOpacity style={styles.primaryBtn} onPress={() => handleSendRequest(u.id, u.name)}>
+                    <Text style={styles.primaryBtnText}>Arkadaş Ekle</Text>
+                  </TouchableOpacity>
+                ),
+                !!u.isMock
+              ))}
+            </>
           )}
         </View>
 
-        {/* Incoming Requests */}
-        {friendsData.pending_incoming.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Gelen İstekler</Text>
-            {friendsData.pending_incoming.map((item) => (
-              <View key={item.id} style={styles.requestCard}>
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{item.name}</Text>
-                </View>
-                <View style={styles.requestActions}>
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, styles.acceptBtn]}
-                    onPress={() => handleRespond(item.request_id, 'accepted')}
-                  >
-                    <Text style={styles.actionBtnText}>Kabul Et</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, styles.rejectBtn]}
-                    onPress={() => handleRespond(item.request_id, 'rejected')}
-                  >
-                    <Text style={styles.actionBtnText}>Reddet</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Friends List */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Arkadaşlarım ({friendsData.friends.length})</Text>
-          {loading ? (
-            <ActivityIndicator style={{ marginTop: 20 }} color={COLORS.primaryLight} />
-          ) : friendsData.friends.length === 0 ? (
-            <Text style={styles.emptyText}>Henüz arkadaşın yok.</Text>
-          ) : (
-            friendsData.friends.map((item) => (
-              <View key={item.id} style={styles.friendItem}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
-                </View>
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{item.name}</Text>
-                </View>
-                <Ionicons name="chatbubble-ellipses-outline" size={20} color={COLORS.textTertiary} />
-              </View>
-            ))
-          )}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -193,20 +342,33 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.darkBg,
   },
   header: {
-    padding: 24,
-    paddingTop: 20,
+    padding: 20,
+    paddingTop: 10,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 24,
   },
   searchSection: {
-    marginBottom: 24,
+    paddingHorizontal: 20,
+    marginBottom: 16,
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -224,25 +386,77 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textPrimary,
   },
-  resultsContainer: {
-    marginTop: 12,
+  tabsContainer: {
+    maxHeight: 50,
+  },
+  tabsContent: {
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  tabButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
     backgroundColor: COLORS.darkCard,
-    borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.darkBorder,
-    padding: 8,
   },
-  resultItem: {
+  tabButtonActive: {
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primaryLight,
+  },
+  tabText: {
+    color: COLORS.textTertiary,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  tabContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  sectionHeaderRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
-    gap: 12,
+    marginBottom: 16,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary + '22',
+  sectionSubtitle: {
+    color: COLORS.textTertiary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  emptyText: {
+    color: COLORS.textTertiary,
+    textAlign: 'center',
+    marginTop: 30,
+  },
+  card: {
+    backgroundColor: COLORS.darkCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.darkBorder,
+    marginBottom: 12,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  avatarImg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: COLORS.primaryLight + '50',
+  },
+  avatarTextContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary + '30',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -251,78 +465,90 @@ const styles = StyleSheet.create({
   avatarText: {
     color: COLORS.primaryLight,
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: 18,
   },
   userInfo: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   userName: {
     color: COLORS.textPrimary,
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 16,
+    flexShrink: 1,
+  },
+  mockBadge: {
+    fontSize: 10,
+    color: '#fbbf24',
+    backgroundColor: '#fbbf2420',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    fontWeight: '600',
   },
   userEmail: {
     color: COLORS.textTertiary,
     fontSize: 12,
+    marginTop: 2,
   },
-  addBtn: {
-    padding: 8,
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 16,
-  },
-  requestCard: {
-    backgroundColor: COLORS.darkCard,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.darkBorder,
-  },
-  requestActions: {
+  scoreRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
   },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
+  scoreText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  commonActivitiesText: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    marginTop: 4,
+  },
+  cardAction: {
+    marginTop: 4,
+  },
+  primaryBtn: {
+    backgroundColor: COLORS.primaryLight,
+    paddingVertical: 10,
+    borderRadius: 12,
     alignItems: 'center',
   },
-  acceptBtn: {
-    backgroundColor: COLORS.primaryLight,
-  },
-  rejectBtn: {
-    backgroundColor: COLORS.darkBg,
-    borderWidth: 1,
-    borderColor: COLORS.darkBorder,
-  },
-  actionBtnText: {
+  primaryBtnText: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 14,
   },
-  friendItem: {
-    flexDirection: 'row',
+  secondaryBtn: {
+    backgroundColor: 'transparent',
+    paddingVertical: 10,
+    borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: COLORS.darkCard,
-    padding: 12,
-    borderRadius: 16,
-    marginBottom: 10,
     borderWidth: 1,
     borderColor: COLORS.darkBorder,
-    gap: 12,
   },
-  emptyText: {
-    color: COLORS.textTertiary,
+  secondaryBtnText: {
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  statusText: {
+    color: '#34d399',
+    fontWeight: '600',
+    fontSize: 13,
     textAlign: 'center',
-    marginTop: 20,
+    paddingVertical: 8,
   },
+  statusTextWarn: {
+    color: '#fbbf24',
+    fontWeight: '600',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 8,
+  }
 });

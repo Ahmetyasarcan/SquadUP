@@ -1,155 +1,269 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  KeyboardAvoidingView, 
-  Platform, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
-import { useRouter, Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Mail, Lock, LogIn } from 'lucide-react-native';
-import { useStore } from '../../store/useStore';
-import { login } from '../../services/api';
-import { styled } from 'nativewind';
-
-const StyledView = styled(View);
-const StyledText = styled(Text);
-const StyledTextInput = styled(TextInput);
-const StyledTouchableOpacity = styled(TouchableOpacity);
-const StyledKeyboardAvoidingView = styled(KeyboardAvoidingView);
-const StyledScrollView = styled(ScrollView);
-const StyledLinearGradient = styled(LinearGradient);
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
+import { useAuth } from '../../contexts/AuthContext';
+import { COLORS } from '../../constants/colors';
 
 export default function LoginScreen() {
-  const router = useRouter();
-  const { setUser } = useStore();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { signIn } = useAuth();
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      setError('Lütfen tüm alanları doldurun');
+  const [email, setEmail]               = useState('');
+  const [password, setPassword]         = useState('');
+  const [loading, setLoading]           = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  async function handleLogin() {
+    if (!email.trim() || !password) {
+      Toast.show({ type: 'error', text1: 'Eksik Bilgi', text2: 'Lütfen tüm alanları doldurun' });
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    setLoading(true);
     try {
-      const data = await login({ email, password });
-      setUser(data.user);
+      await signIn(email.trim(), password);
       router.replace('/(tabs)');
-    } catch (err: any) {
-      setError(err.message || 'Giriş başarısız');
+    } catch (error: any) {
+      const msg: string = error?.message ?? '';
+
+      if (msg.includes('Invalid login credentials')) {
+        Toast.show({ type: 'error', text1: 'Giriş Başarısız', text2: 'Email veya şifre hatalı' });
+      } else if (msg.includes('Email not confirmed')) {
+        Toast.show({ type: 'error', text1: 'Email Onayı Gerekli', text2: 'Lütfen email adresinizi onaylayın' });
+      } else if (msg.includes('Too many requests')) {
+        Toast.show({ type: 'error', text1: 'Çok Fazla Deneme', text2: 'Lütfen biraz bekleyin' });
+      } else {
+        Toast.show({ type: 'error', text1: 'Hata', text2: msg || 'Bir hata oluştu' });
+      }
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }
 
   return (
-    <StyledKeyboardAvoidingView 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1"
     >
-      <StyledLinearGradient
-        colors={['#0c4a6e', '#0284c7', '#f8fafc']}
-        className="flex-1"
+      {/* Background orbs */}
+      <View style={styles.bg}>
+        <View style={[styles.orb, styles.orb1]} />
+        <View style={[styles.orb, styles.orb2]} />
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <StyledScrollView contentContainerStyle={{ flexGrow: 1 }} className="px-6 pt-20">
-          {/* Logo Area */}
-          <StyledView className="items-center mb-12">
-            <StyledView className="w-20 h-20 bg-primary-600 rounded-3xl items-center justify-center shadow-lg shadow-primary-500/50">
-              <StyledText className="text-white text-4xl font-extrabold">S</StyledText>
-            </StyledView>
-            <StyledText className="text-white text-3xl font-extrabold mt-6">SquadUp</StyledText>
-            <StyledText className="text-blue-100 mt-2">Takımını kur, maceraya katıl</StyledText>
-          </StyledView>
+        {/* Logo */}
+        <View style={styles.logoWrap}>
+          <LinearGradient
+            colors={[COLORS.primaryLight, COLORS.secondary]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.logo}
+          >
+            <Text style={styles.logoLetter}>S</Text>
+          </LinearGradient>
+          <Text style={styles.appName}>SquadUp</Text>
+          <Text style={styles.subtitle}>Hoş geldin! Giriş yap ve aktivitelere katıl</Text>
+        </View>
 
-          {/* Form */}
-          <StyledView className="bg-white/95 p-8 rounded-[40px] shadow-2xl border border-white/50">
-            <StyledText className="text-xl font-bold text-gray-900 mb-6">Giriş Yap</StyledText>
+        {/* Card */}
+        <View style={styles.card}>
 
-            {error && (
-              <StyledView className="bg-red-50 p-4 rounded-2xl mb-4 border border-red-100">
-                <StyledText className="text-red-600 text-sm">{error}</StyledText>
-              </StyledView>
-            )}
+          {/* Email */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Email</Text>
+            <View style={styles.inputRow}>
+              <Ionicons name="mail-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="email@example.com"
+                placeholderTextColor={COLORS.textTertiary}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          </View>
 
-            <StyledView className="space-y-4">
-              {/* Email Input */}
-              <StyledView className="space-y-2">
-                <StyledText className="text-sm font-semibold text-gray-700 ml-1">E-posta</StyledText>
-                <StyledView className="flex-row items-center bg-gray-50 rounded-2xl px-4 py-4 border border-gray-100">
-                  <Mail size={20} color="#64748b" />
-                  <StyledTextInput
-                    className="flex-1 ml-3 text-gray-900"
-                    placeholder="ornek@email.com"
-                    placeholderTextColor="#94a3b8"
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
-                </StyledView>
-              </StyledView>
+          {/* Password */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Şifre</Text>
+            <View style={styles.inputRow}>
+              <Ionicons name="lock-closed-outline" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="••••••••"
+                placeholderTextColor={COLORS.textTertiary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity onPress={() => setShowPassword(p => !p)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons
+                  name={showPassword ? 'eye-outline' : 'eye-off-outline'}
+                  size={20}
+                  color={COLORS.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
 
-              {/* Password Input */}
-              <StyledView className="space-y-2">
-                <StyledText className="text-sm font-semibold text-gray-700 ml-1">Şifre</StyledText>
-                <StyledView className="flex-row items-center bg-gray-50 rounded-2xl px-4 py-4 border border-gray-100">
-                  <Lock size={20} color="#64748b" />
-                  <StyledTextInput
-                    className="flex-1 ml-3 text-gray-900"
-                    placeholder="••••••••"
-                    placeholderTextColor="#94a3b8"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                  />
-                </StyledView>
-              </StyledView>
+          {/* Forgot Password */}
+          <TouchableOpacity
+            style={styles.forgotWrap}
+            onPress={() => router.push('/(auth)/forgot-password')}
+          >
+            <Text style={styles.forgotText}>Şifremi Unuttum</Text>
+          </TouchableOpacity>
 
-              {/* Forgot Password */}
-              <StyledTouchableOpacity className="items-end">
-                <StyledText className="text-primary-600 text-sm font-medium">Şifremi Unuttum</StyledText>
-              </StyledTouchableOpacity>
+          {/* Login Button */}
+          <TouchableOpacity onPress={handleLogin} disabled={loading} activeOpacity={0.8}>
+            <LinearGradient
+              colors={[COLORS.primary, COLORS.primaryDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.btn}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="log-in-outline" size={20} color="#fff" />
+                  <Text style={styles.btnText}>Giriş Yap</Text>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
 
-              {/* Login Button */}
-              <StyledTouchableOpacity 
-                onPress={handleLogin}
-                disabled={isLoading}
-                className={`mt-4 py-4 rounded-2xl flex-row items-center justify-center ${
-                  isLoading ? 'bg-primary-400' : 'bg-primary-600 shadow-md shadow-primary-500/40'
-                }`}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <>
-                    <StyledText className="text-white font-bold text-lg mr-2">Giriş Yap</StyledText>
-                    <LogIn size={20} color="white" />
-                  </>
-                )}
-              </StyledTouchableOpacity>
-            </StyledView>
-          </StyledView>
+          {/* Divider */}
+          <View style={styles.divider}>
+            <View style={styles.divLine} />
+            <Text style={styles.divText}>veya</Text>
+            <View style={styles.divLine} />
+          </View>
 
-          {/* Footer */}
-          <StyledView className="flex-row justify-center mt-12 mb-10">
-            <StyledText className="text-gray-500">Hesabın yok mu? </StyledText>
-            <Link href="/(auth)/register" asChild>
-              <StyledTouchableOpacity>
-                <StyledText className="text-primary-600 font-bold">Kayıt Ol</StyledText>
-              </StyledTouchableOpacity>
-            </Link>
-          </StyledView>
-        </StyledScrollView>
-      </StyledLinearGradient>
-    </StyledKeyboardAvoidingView>
+          {/* Signup link */}
+          <View style={styles.signupRow}>
+            <Text style={styles.signupText}>Hesabın yok mu? </Text>
+            <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
+              <Text style={styles.signupLink}>Kayıt Ol</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <Text style={styles.footer}>SquadUp ile aktivite bul, takım kur 🚀</Text>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.darkBg },
+  bg:        { ...StyleSheet.absoluteFillObject },
+  orb: {
+    position: 'absolute',
+    borderRadius: 999,
+    opacity: 0.25,
+  },
+  orb1: {
+    top: 60, left: -60,
+    width: 260, height: 260,
+    backgroundColor: COLORS.primary,
+  },
+  orb2: {
+    bottom: 80, right: -60,
+    width: 300, height: 300,
+    backgroundColor: COLORS.secondary,
+  },
+  scroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  logoWrap: { alignItems: 'center', marginBottom: 36 },
+  logo: {
+    width: 80, height: 80,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: COLORS.primaryLight,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  logoLetter: { fontSize: 40, fontWeight: '900', color: '#fff' },
+  appName:   { fontSize: 32, fontWeight: '900', color: COLORS.primaryLight, marginBottom: 6 },
+  subtitle:  { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center' },
+
+  card: {
+    backgroundColor: COLORS.darkCard + 'CC',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: COLORS.darkBorder,
+  },
+  field:     { marginBottom: 20 },
+  label:     { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 8 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.darkBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.darkBorder,
+    paddingHorizontal: 14,
+    height: 50,
+  },
+  inputIcon: { marginRight: 10 },
+  input: { flex: 1, fontSize: 16, color: COLORS.textPrimary },
+
+  forgotWrap: { alignSelf: 'flex-end', marginBottom: 24 },
+  forgotText: { fontSize: 14, color: COLORS.primaryLight, fontWeight: '600' },
+
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  btnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+
+  divider:  { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
+  divLine:  { flex: 1, height: 1, backgroundColor: COLORS.darkBorder },
+  divText:  { marginHorizontal: 16, fontSize: 14, color: COLORS.textSecondary },
+
+  signupRow:  { flexDirection: 'row', justifyContent: 'center' },
+  signupText: { fontSize: 14, color: COLORS.textSecondary },
+  signupLink: { fontSize: 14, color: COLORS.primaryLight, fontWeight: '700' },
+
+  footer: { textAlign: 'center', fontSize: 12, color: COLORS.textTertiary, marginTop: 24 },
+});

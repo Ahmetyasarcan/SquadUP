@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store/useStore';
-import { getActivities, joinActivity } from '../services/api';
+import { getActivities, joinActivity, getParticipationStatus } from '../services/api';
 import { applyFilters } from '../utils/filters';
 import { useDebounce } from '../hooks/useDebounce';
 import ActivityCard from '../components/ActivityCard';
@@ -26,6 +26,7 @@ export default function ActivitiesPage() {
     setError,
   } = useStore();
 
+  const [statuses, setStatuses] = useState<Record<string, string>>({});
   // Local search state for debounce
   const [searchInput, setSearchInput] = useState(filters.search);
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -35,29 +36,28 @@ export default function ActivitiesPage() {
     updateFilters({ search: debouncedSearch });
   }, [debouncedSearch]);
 
-  // Fetch on mount
   useEffect(() => {
-    loadActivities();
-  }, []);
-
-  async function loadActivities() {
-    setLoading(true);
-    setError(null);
-    const res = await getActivities();
-    if (res.data && res.data.activities.length > 0) {
-      setActivities(res.data.activities);
-    } else {
-      // API unavailable or empty → use mock data for demo
-      setActivities(MOCK_ACTIVITIES);
+    async function load() {
+      setLoading(true);
+      try {
+        const [actRes, statRes] = await Promise.all([
+          getActivities(),
+          user ? getParticipationStatus() : Promise.resolve({ data: { statuses: {} } })
+        ]);
+        if (actRes.data) {
+          setActivities(actRes.data.activities);
+        }
+        if (statRes.data) {
+          setStatuses(statRes.data.statuses);
+        }
+      } catch (error) {
+        toast.error('Veriler yüklenemedi');
+      } finally {
+        setLoading(false);
+      }
     }
-    setLoading(false);
-  }
-
-  // Functional pipeline: filter → sort (derived, no state mutation)
-  const filtered = useMemo(
-    () => applyFilters(activities, filters.search, filters.category, filters.sortField, filters.sortOrder),
-    [activities, filters]
-  );
+    load();
+  }, [user]);
 
   async function handleJoin(activityId: string) {
     if (!user) {
@@ -65,32 +65,39 @@ export default function ActivitiesPage() {
       return;
     }
 
-    // Optimistic update: immediately update UI
-    const updatedActivities = activities.map((a) =>
-      a.id === activityId
-        ? { ...a, current_participants: a.current_participants + 1 }
-        : a
-    );
-    setActivities(updatedActivities);
+    const prevStatuses = { ...statuses };
+    setStatuses(prev => ({ ...prev, [activityId]: 'pending' }));
 
     const res = await joinActivity(activityId, user.id);
+
     if (res.data) {
-      toast.success('Aktiviteye başarıyla katıldınız! 🎉');
+      toast.success(res.data.message || 'Katılım isteğiniz gönderildi! ⏳');
     } else {
-      // Mock join success when API is down
-      toast.success('Aktiviteye katıldınız! 🎉');
+      setStatuses(prevStatuses);
+      const errMsg = res.error ?? '';
+      if (errMsg.includes('zaten var')) {
+        toast.error('Bu etkinlik için zaten onay bekleyen bir isteğiniz var');
+        setStatuses(prev => ({ ...prev, [activityId]: 'pending' }));
+      } else if (errMsg.includes('already joined')) {
+        toast.error('Bu aktiviteye zaten katıldınız');
+        setStatuses(prev => ({ ...prev, [activityId]: 'joined' }));
+      } else if (errMsg.includes('full')) {
+        toast.error('Aktivite dolu! Maksimum katılımcı sayısına ulaşıldı');
+      } else {
+        toast.error('İstek başarısız: ' + errMsg);
+      }
     }
   }
 
-  // Loading state with skeletons
+  const filtered = useMemo(
+    () => applyFilters(activities, filters.search, filters.category, filters.sortField, filters.sortOrder),
+    [activities, filters]
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-dark-bg py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-8">
-            <div className="h-8 w-48 bg-dark-hover rounded-lg mb-2 animate-pulse" />
-            <div className="h-4 w-64 bg-dark-hover rounded animate-pulse" />
-          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <ActivityCardSkeleton key={i} />
@@ -104,7 +111,6 @@ export default function ActivitiesPage() {
   return (
     <div className="min-h-screen bg-dark-bg py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-secondary-500 rounded-xl flex items-center justify-center shadow-glow-cyan">
@@ -161,6 +167,7 @@ export default function ActivitiesPage() {
               >
                 <ActivityCard
                   activity={activity}
+                  userStatus={statuses[activity.id]}
                   onJoin={() => handleJoin(activity.id)}
                 />
               </div>

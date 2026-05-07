@@ -10,6 +10,7 @@ import Button from './ui/Button';
 
 interface ActivityCardProps {
   activity: Activity;
+  userStatus?: string; // 'pending' | 'joined' | 'attended' | undefined
   onPress?: () => void;
   onJoin?: () => void;
   showMatchScore?: boolean;
@@ -17,6 +18,7 @@ interface ActivityCardProps {
 
 export default function ActivityCard({
   activity,
+  userStatus,
   onPress,
   onJoin,
   showMatchScore = false,
@@ -139,10 +141,18 @@ export default function ActivityCard({
         {/* Join Button */}
         {onJoin && (
           <Button
-            title={isFull ? 'Dolu' : 'Katıl'}
+            title={
+              userStatus === 'joined' || userStatus === 'attended' ? 'Katıldın ✅' :
+              userStatus === 'pending' ? 'İstek Gönderildi ⏳' :
+              isFull ? 'Dolu' : 'Katıl'
+            }
             onPress={onJoin}
-            variant={isFull ? 'ghost' : 'neon'}
-            disabled={isFull}
+            variant={
+              userStatus === 'joined' || userStatus === 'attended' ? 'ghost' :
+              userStatus === 'pending' ? 'outline' :
+              isFull ? 'ghost' : 'neon'
+            }
+            disabled={isFull || userStatus === 'pending' || userStatus === 'joined' || userStatus === 'attended'}
           />
         )}
       </View>

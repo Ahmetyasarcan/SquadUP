@@ -32,3 +32,6 @@ mobile/node_modules/
 mobile/.expo/
 web/node_modules/
 web/dist/
+
+brain/
+*.log

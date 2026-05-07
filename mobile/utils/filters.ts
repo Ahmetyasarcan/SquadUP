@@ -11,9 +11,9 @@ export function filterBySearch(
   const lower = query.toLowerCase();
   return activities.filter(
     (a) =>
-      a.title.toLowerCase().includes(lower) ||
-      a.description.toLowerCase().includes(lower) ||
-      a.location.toLowerCase().includes(lower)
+      (a.title || '').toLowerCase().includes(lower) ||
+      (a.description || '').toLowerCase().includes(lower) ||
+      (a.location || '').toLowerCase().includes(lower)
   );
 }
 

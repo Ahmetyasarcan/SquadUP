@@ -55,6 +55,13 @@ export async function getUser(userId: string): Promise<ApiResponse<User>> {
   return fetchJSON<User>(`${API_BASE}/users/${userId}`);
 }
 
+export async function updateUser(userId: string, userData: Partial<User>): Promise<ApiResponse<User>> {
+  return fetchJSON<User>(`${API_BASE}/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(userData),
+  });
+}
+
 // ========== AUTH ENDPOINTS ==========
 
 export async function login(credentials: { email: string; password: string }): Promise<ApiResponse<{ 
@@ -131,10 +138,25 @@ export async function createActivity(activityData: {
 export async function joinActivity(
   activityId: string,
   userId: string
-): Promise<ApiResponse<{ message: string }>> {
-  return fetchJSON<{ message: string }>(`${API_BASE}/activities/${activityId}/join`, {
+): Promise<ApiResponse<{ message: string; participant_count?: number; activity_title?: string }>> {
+  return fetchJSON<{ message: string; participant_count?: number; activity_title?: string }>(`${API_BASE}/activities/${activityId}/join`, {
     method: 'POST',
     body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function getParticipationStatus(): Promise<ApiResponse<{ statuses: Record<string, string> }>> {
+  return fetchJSON<{ statuses: Record<string, string> }>(`${API_BASE}/participations/status`);
+}
+
+export async function getActivityParticipants(activityId: string): Promise<ApiResponse<{ pending: any[], approved: any[] }>> {
+  return fetchJSON<{ pending: any[], approved: any[] }>(`${API_BASE}/activities/${activityId}/participants`);
+}
+
+export async function respondActivityRequest(activityId: string, participationId: string, status: 'joined' | 'rejected'): Promise<ApiResponse<{ message: string }>> {
+  return fetchJSON<{ message: string }>(`${API_BASE}/activities/${activityId}/respond_request`, {
+    method: 'POST',
+    body: JSON.stringify({ participation_id: participationId, status }),
   });
 }
 

@@ -1,130 +1,267 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
   FlatList, 
   ActivityIndicator, 
-  SafeAreaView, 
   StatusBar,
-  ScrollView,
-  Dimensions
+  Dimensions,
+  StyleSheet,
+  Alert
 } from 'react-native';
-import { useStore } from '../../store/useStore';
-import { getRecommendations } from '../../services/api';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../../contexts/AuthContext';
+import { getRecommendations, joinActivity } from '../../services/api';
 import ActivityCard from '../../components/ActivityCard';
-import { UI_TEXT } from '../../constants/translations';
 import { Sparkles, BarChart3, Info } from 'lucide-react-native';
-import { styled } from 'nativewind';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const StyledView = styled(View);
-const StyledText = styled(Text);
+import { COLORS, SHADOWS } from '../../constants/colors';
 
 const { width } = Dimensions.get('window');
 
 export default function RecommendationsScreen() {
-  const { recommendations, user, loading, setRecommendations, setLoading } =
-    useStore();
+  const { user } = useAuth();
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      if (!user) return;
-
-      setLoading(true);
-      try {
-        const data = await getRecommendations(user.id);
-        setRecommendations(data.recommendations);
-      } catch (error) {
-        console.error('Load error:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    loadRecommendations();
   }, [user?.id]);
+
+  async function loadRecommendations() {
+    setLoading(true);
+    try {
+      // If user exists, fetch real recs. If not, API will fallback to mock.
+      const userId = user?.id || 'mock_user_id';
+      const data = await getRecommendations(userId);
+      setRecommendations(data.recommendations || []);
+    } catch (error) {
+      console.error('Load error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleJoin = async (id: string) => {
+    try {
+      const userId = user?.id || 'mock_user_id';
+      const res = await joinActivity(id, userId);
+      Alert.alert('Başarılı', res.message);
+    } catch (e) {
+      Alert.alert('Hata', 'Aktiviteye katılamadınız');
+    }
+  };
 
   if (loading && recommendations.length === 0) {
     return (
-      <StyledView className="flex-1 items-center justify-center bg-gray-50">
-        <ActivityIndicator size="large" color="#0284c7" />
-        <StyledText className="text-gray-500 mt-4 font-medium">Sana özel aktiviteler hazırlanıyor...</StyledText>
-      </StyledView>
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Sana özel aktiviteler hazırlanıyor...</Text>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" />
       
       {/* Header with Background Gradient */}
-      <StyledView className="relative">
+      <View style={styles.header}>
         <LinearGradient
-          colors={['#0284c7', '#0369a1']}
-          className="px-6 pt-12 pb-24 rounded-b-[40px]"
+          colors={[COLORS.primaryDark, COLORS.darkBg]}
+          style={styles.headerGradient}
         >
-          <StyledView className="flex-row items-center gap-3">
-            <Sparkles size={28} color="white" />
-            <StyledText className="text-white text-3xl font-extrabold">Sana Özel</StyledText>
-          </StyledView>
-          <StyledText className="text-blue-100 mt-2 text-base font-medium">
+          <View style={styles.headerTitleRow}>
+            <Sparkles size={28} color={COLORS.primaryLight} />
+            <Text style={styles.title}>Sana Özel</Text>
+          </View>
+          <Text style={styles.subtitle}>
             Profiline ve tercihlerine en uygun {recommendations.length} aktivite bulundu.
-          </StyledText>
+          </Text>
         </LinearGradient>
 
         {/* Stats Card (Floating) */}
-        <StyledView 
-          className="absolute -bottom-12 left-6 right-6 bg-white p-6 rounded-3xl shadow-xl shadow-gray-200 border border-gray-50 flex-row justify-around"
-        >
-          <StyledView className="items-center">
-            <StyledText className="text-gray-400 text-[10px] font-bold uppercase mb-1">Mükemmel</StyledText>
-            <StyledText className="text-primary-600 text-xl font-extrabold">
+        <View style={styles.statsCard}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Mükemmel</Text>
+            <Text style={[styles.statValue, { color: COLORS.primaryLight }]}>
               {recommendations.filter(r => (r.match_result?.score || 0) >= 0.8).length}
-            </StyledText>
-          </StyledView>
-          <StyledView className="w-[1px] h-full bg-gray-100" />
-          <StyledView className="items-center">
-            <StyledText className="text-gray-400 text-[10px] font-bold uppercase mb-1">İyi Eşleşme</StyledText>
-            <StyledText className="text-green-600 text-xl font-extrabold">
+            </Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>İyi Eşleşme</Text>
+            <Text style={[styles.statValue, { color: COLORS.success }]}>
               {recommendations.filter(r => (r.match_result?.score || 0) >= 0.5 && (r.match_result?.score || 0) < 0.8).length}
-            </StyledText>
-          </StyledView>
-          <StyledView className="w-[1px] h-full bg-gray-100" />
-          <StyledView className="items-center">
-            <StyledText className="text-gray-400 text-[10px] font-bold uppercase mb-1">Ortalama</StyledText>
-            <StyledText className="text-orange-500 text-xl font-extrabold">
+            </Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Ortalama</Text>
+            <Text style={[styles.statValue, { color: COLORS.warning }]}>
               {recommendations.filter(r => (r.match_result?.score || 0) < 0.5).length}
-            </StyledText>
-          </StyledView>
-        </StyledView>
-      </StyledView>
+            </Text>
+          </View>
+        </View>
+      </View>
 
       {/* List */}
       <FlatList
         data={recommendations}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 24, paddingTop: 64, paddingBottom: 100 }}
+        contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <ActivityCard activity={item} showMatchScore={true} />
+          <ActivityCard 
+            activity={item} 
+            showMatchScore={true} 
+            onJoin={() => handleJoin(item.id)}
+          />
         )}
         ListHeaderComponent={
-          <StyledView className="flex-row items-center gap-2 mb-6 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-            <Info size={16} color="#0369a1" />
-            <StyledText className="text-blue-800 text-xs font-medium flex-1">
+          <View style={styles.infoBanner}>
+            <Info size={16} color={COLORS.primaryLight} />
+            <Text style={styles.infoText}>
               Eşleşme puanı, ilgi alanların ve rekabet seviyen dikkate alınarak hesaplanmıştır.
-            </StyledText>
-          </StyledView>
+            </Text>
+          </View>
         }
         ListEmptyComponent={
-          <StyledView className="items-center justify-center mt-20">
-            <StyledView className="w-20 h-20 bg-gray-100 rounded-full items-center justify-center mb-4">
-              <BarChart3 size={32} color="#94a3b8" />
-            </StyledView>
-            <StyledText className="text-gray-500 text-lg font-bold">Öneri Bulunamadı</StyledText>
-            <StyledText className="text-gray-400 text-sm mt-2">Daha fazla aktivite keşfetmeyi dene!</StyledText>
-          </StyledView>
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconContainer}>
+              <BarChart3 size={32} color={COLORS.textTertiary} />
+            </View>
+            <Text style={styles.emptyTitle}>Öneri Bulunamadı</Text>
+            <Text style={styles.emptySubtitle}>Daha fazla aktivite keşfetmeyi dene!</Text>
+          </View>
         }
       />
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.darkBg,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.darkBg,
+  },
+  loadingText: {
+    color: COLORS.textSecondary,
+    marginTop: 12,
+    fontSize: 16,
+  },
+  header: {
+    position: 'relative',
+    marginBottom: 60,
+  },
+  headerGradient: {
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    paddingBottom: 80,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  title: {
+    color: '#fff',
+    fontSize: 32,
+    fontWeight: '800',
+  },
+  subtitle: {
+    color: COLORS.textSecondary,
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  statsCard: {
+    position: 'absolute',
+    bottom: -40,
+    left: 24,
+    right: 24,
+    backgroundColor: COLORS.darkCard,
+    borderRadius: 24,
+    padding: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderWidth: 1,
+    borderColor: COLORS.darkBorder,
+    ...SHADOWS.card,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statLabel: {
+    color: COLORS.textTertiary,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  divider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: COLORS.darkBorder,
+  },
+  list: {
+    padding: 24,
+    paddingTop: 20,
+    paddingBottom: 100,
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 24,
+    backgroundColor: COLORS.primaryDark + '22',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.primaryDark + '44',
+  },
+  infoText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 40,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    backgroundColor: COLORS.darkCard,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.darkBorder,
+  },
+  emptyTitle: {
+    color: COLORS.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  emptySubtitle: {
+    color: COLORS.textTertiary,
+    fontSize: 14,
+    marginTop: 4,
+  },
+});
