@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { createUser, getUsers } from '../services/api';
+import { createUser, getUsers, updateUser as updateUserAPI } from '../services/api';
 import { persistUser } from '../utils/auth';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -10,6 +10,8 @@ import type { Category } from '../types';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getAvatarUrl, AVATAR_SEEDS } from '../utils/avatars';
+import AvatarPicker from '../components/AvatarPicker';
 
 const CATEGORY_OPTIONS: Category[] = ['sports', 'esports', 'board_games', 'outdoor'];
 
@@ -23,6 +25,7 @@ export default function ProfilePage() {
     email: user?.email || '',
     interests: user?.interests || [],
     competition_level: user?.competition_level || 3,
+    avatar_seed: user?.avatar_seed || AVATAR_SEEDS[0],
   });
 
   const [saved, setSaved] = useState(false);
@@ -35,6 +38,7 @@ export default function ProfilePage() {
         email: user.email || '',
         interests: user.interests || [],
         competition_level: user.competition_level || 3,
+        avatar_seed: user.avatar_seed || AVATAR_SEEDS[0],
       });
     }
   }, [user]);
@@ -54,12 +58,22 @@ export default function ProfilePage() {
     setSaved(false);
 
     if (user) {
-      const updatedUser = { ...user, ...form, interests: form.interests as Category[] };
-      setUser(updatedUser);
-      persistUser(updatedUser);
-      setSaved(true);
+      const res = await updateUserAPI(user.id, {
+        name: form.name,
+        interests: form.interests as Category[],
+        competition_level: form.competition_level,
+        avatar_seed: form.avatar_seed
+      });
+
+      if (res.data) {
+        setUser(res.data);
+        persistUser(res.data);
+        setSaved(true);
+        toast.success('Profil güncellendi! ✓');
+      } else {
+        toast.error(res.error || 'Güncelleme başarısız');
+      }
       setLoading(false);
-      toast.success('Profil güncellendi! ✓');
       return;
     }
 
@@ -148,15 +162,24 @@ export default function ProfilePage() {
             </p>
           </div>
           {user && (
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-primary-500/20">
-              {user.name.charAt(0).toUpperCase()}
+            <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white dark:border-gray-800 shadow-xl bg-white dark:bg-gray-800">
+              <img 
+                src={getAvatarUrl(form.avatar_seed || user.id)} 
+                alt={user.name} 
+                className="w-full h-full object-cover"
+              />
             </div>
           )}
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
           <div className="md:col-span-2 space-y-6">
-            <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 space-y-5 animate-fade-in-up">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 animate-fade-in-up">
+              <AvatarPicker 
+                currentSeed={form.avatar_seed} 
+                onSelect={(seed) => setForm({ ...form, avatar_seed: seed })} 
+              />
+              <form onSubmit={handleSubmit} className="space-y-5">
               <Input
                 label="Ad Soyad"
                 value={form.name}
@@ -221,7 +244,8 @@ export default function ProfilePage() {
                 {saved && !loading ? <CheckCircle className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
                 {saved && !loading ? UI_TEXT.profile.saved : UI_TEXT.profile.save}
               </Button>
-            </form>
+              </form>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -231,6 +255,29 @@ export default function ProfilePage() {
                   <Target className="w-5 h-5 text-primary-500" />
                   {UI_TEXT.profile.stats}
                 </h3>
+
+                {/* Level & XP System */}
+                <div className="mb-6 bg-gradient-to-r from-primary-600 to-primary-500 rounded-2xl p-4 text-white shadow-lg shadow-primary-500/20 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:scale-110 transition-transform">
+                    <Zap className="w-12 h-12 text-white" fill="white" />
+                  </div>
+                  <div className="relative z-10">
+                    <div className="flex justify-between items-end mb-2">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider opacity-80">Mevcut Seviye</p>
+                        <p className="text-2xl font-black">Lv. {Math.floor((user.attended_events || 0) / 5) + 1}</p>
+                      </div>
+                      <p className="text-[10px] font-bold bg-white/20 px-2 py-1 rounded-full">{user.attended_events % 5} / 5 XP</p>
+                    </div>
+                    <div className="h-2 bg-black/20 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-white rounded-full transition-all duration-1000"
+                        style={{ width: `${((user.attended_events || 0) % 5) * 20}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] mt-2 opacity-70">Sonraki seviyeye {5 - (user.attended_events % 5)} etkinlik kaldı</p>
+                  </div>
+                </div>
 
                 <div className="space-y-5">
                   <div className="flex items-center gap-3">

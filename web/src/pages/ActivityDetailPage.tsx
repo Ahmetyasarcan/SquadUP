@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Calendar, MapPin, Users, Trophy, ArrowLeft, Share2, Clock, Zap } from 'lucide-react';
-import { getActivities, joinActivity } from '../services/api';
+import { Calendar, MapPin, Users, Trophy, ArrowLeft, Share2, Clock, Zap, MessageCircle } from 'lucide-react';
+import { getActivities, joinActivity, getActivityParticipants, respondActivityRequest, getParticipationStatus } from '../services/api';
 import { useStore } from '../store/useStore';
 import toast from 'react-hot-toast';
 import type { Activity } from '../types';
@@ -10,6 +10,8 @@ import StatusBadge from '../components/StatusBadge';
 import { CATEGORIES, CATEGORY_ICONS, COMPETITION_LEVELS, COMPETITION_COLORS } from '../constants/translations';
 import { formatDateTime, getRelativeTime, formatScore } from '../utils/formatters';
 import { MOCK_ACTIVITIES } from '../data/mockData';
+import { Check, X, UserCheck, UserPlus } from 'lucide-react';
+import { getAvatarUrl } from '../utils/avatars';
 
 export default function ActivityDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,45 +19,58 @@ export default function ActivityDetailPage() {
   const { user } = useStore();
 
   const [activity, setActivity] = useState<Activity | null>(null);
+  const [participants, setParticipants] = useState<{ pending: any[], approved: any[] }>({ pending: [], approved: [] });
+  const [userStatus, setUserStatus] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       if (!id) return;
       setLoading(true);
       try {
-        const res = await getActivities();
-        if (res.data && res.data.activities.length > 0) {
-          const found = res.data.activities.find((a) => a.id === id);
+        const [actRes, statRes] = await Promise.all([
+          getActivities(),
+          user ? getParticipationStatus() : Promise.resolve({ data: { statuses: {} } })
+        ]);
+
+        if (actRes.data) {
+          const found = actRes.data.activities.find((a) => a.id === id);
           if (found) {
             setActivity(found);
-            setLoading(false);
-            return;
+            
+            // If user is creator, fetch full participants list including pending
+            if (user && found.creator_id === user.id) {
+              const partRes = await getActivityParticipants(id);
+              if (partRes.data) {
+                setParticipants(partRes.data);
+              }
+            }
+          } else {
+            // Fallback: check mock data
+            const mockFound = MOCK_ACTIVITIES.find(a => a.id === id);
+            if (mockFound) {
+              setActivity(mockFound);
+            } else {
+              toast.error('Aktivite bulunamadı');
+              navigate('/activities');
+            }
           }
         }
-        // Fallback: check mock data
-        const mockFound = MOCK_ACTIVITIES.find(a => a.id === id);
-        if (mockFound) {
-          setActivity(mockFound);
-        } else {
-          toast.error('Aktivite bulunamadı');
-          navigate('/activities');
+
+        if (statRes.data) {
+          setUserStatus(statRes.data.statuses[id]);
         }
-      } catch {
-        const mockFound = MOCK_ACTIVITIES.find(a => a.id === id);
-        if (mockFound) {
-          setActivity(mockFound);
-        } else {
-          toast.error('Bağlantı hatası');
-          navigate('/activities');
-        }
+      } catch (err) {
+        console.error(err);
+        toast.error('Bağlantı hatası');
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, [id]);
+  }, [id, user]);
 
   async function handleJoin() {
     if (!user) {
@@ -66,18 +81,14 @@ export default function ActivityDetailPage() {
     if (!activity) return;
 
     setJoining(true);
-    const toastId = toast.loading('Katılım işleniyor...');
+    const toastId = toast.loading('İstek gönderiliyor...');
 
     try {
       const res = await joinActivity(activity.id, user.id);
       if (res.data) {
         toast.dismiss(toastId);
-        toast.success('Aktiviteye başarıyla katıldınız! 🎉');
-        // Optimistic update
-        setActivity({
-          ...activity,
-          current_participants: activity.current_participants + 1,
-        });
+        toast.success(res.data.message || 'Katılım isteğiniz gönderildi! ⏳');
+        setUserStatus('pending');
       } else if (res.error) {
         toast.dismiss(toastId);
         toast.error(res.error);
@@ -87,6 +98,39 @@ export default function ActivityDetailPage() {
       toast.error('Bir hata oluştu');
     } finally {
       setJoining(false);
+    }
+  }
+
+  async function handleRespond(participationId: string, status: 'joined' | 'rejected') {
+    if (!id || respondingId) return;
+    setRespondingId(participationId);
+    
+    try {
+      const res = await respondActivityRequest(id, participationId, status);
+      if (res.data) {
+        toast.success(status === 'joined' ? 'İstek onaylandı! ✅' : 'İstek reddedildi.');
+        
+        // Refresh participants list
+        const partRes = await getActivityParticipants(id);
+        if (partRes.data) {
+          setParticipants(partRes.data);
+          
+          // Update activity count if approved
+          if (status === 'joined' && activity) {
+            setActivity({
+              ...activity,
+              current_participants: partRes.data.approved.length,
+              participant_count: partRes.data.approved.length
+            });
+          }
+        }
+      } else {
+        toast.error(res.error || 'İşlem başarısız');
+      }
+    } catch (err) {
+      toast.error('Bir hata oluştu');
+    } finally {
+      setRespondingId(null);
     }
   }
 
@@ -253,19 +297,17 @@ export default function ActivityDetailPage() {
             <div className="mb-8">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                 <Users className="w-5 h-5 text-primary-500" />
-                Katılımcılar ({activity.participants?.length || count})
+                Katılımcılar ({participants.approved.length || count})
               </h2>
               <div className="flex flex-wrap gap-3">
-                {activity.participants?.map((participant) => (
+                {(participants.approved.length > 0 ? participants.approved : activity.participants)?.map((participant) => (
                   <div key={participant.id} className="flex flex-col items-center gap-1 group">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-secondary-500 flex items-center justify-center text-white font-bold text-lg border-2 border-white dark:border-gray-800 shadow-sm group-hover:scale-110 transition-transform cursor-pointer relative">
-                      {participant.name.charAt(0).toUpperCase()}
-                      {/* Social Proof Badge */}
-                      {user && participant.interests.some(i => user.interests.includes(i)) && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center" title="Ortak ilgi alanı!">
-                          <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                        </div>
-                      )}
+                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white dark:border-gray-800 shadow-sm group-hover:scale-110 transition-transform cursor-pointer relative bg-slate-100 dark:bg-slate-800">
+                      <img 
+                        src={getAvatarUrl(participant.avatar_seed || participant.id)} 
+                        alt={participant.name}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                     <span className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate w-14 text-center">
                       {participant.name.split(' ')[0]}
@@ -273,19 +315,70 @@ export default function ActivityDetailPage() {
                   </div>
                 ))}
                 {/* Empty spots */}
-                {Array.from({ length: Math.min(3, spotsLeft) }).map((_, i) => (
+                {Array.from({ length: Math.max(0, spotsLeft) }).slice(0, 3).map((_, i) => (
                   <div key={`empty-${i}`} className="w-12 h-12 rounded-full border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-300 dark:text-gray-600">
                     ?
                   </div>
                 ))}
               </div>
-              {user && activity.participants?.some(p => p.interests.some(i => user.interests.includes(i))) && (
-                <p className="mt-4 text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded-lg">
-                  <Zap className="w-3 h-3" />
-                  Bu aktivitede seninle ortak ilgi alanına sahip kişiler var!
-                </p>
-              )}
             </div>
+
+            {/* Social Proof for non-creators */}
+            {user && activity.creator_id !== user.id && activity.participants?.some(p => p.interests.some(i => user.interests.includes(i))) && (
+              <p className="mb-6 text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded-lg animate-pulse">
+                <Zap className="w-3 h-3" />
+                Bu aktivitede seninle ortak ilgi alanına sahip kişiler var!
+              </p>
+            )}
+
+            {/* Pending Requests for Creator */}
+            {user && activity.creator_id === user.id && participants.pending.length > 0 && (
+              <div className="mb-8 p-6 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-200 dark:border-amber-800/50">
+                <h2 className="text-lg font-bold text-amber-900 dark:text-amber-100 mb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Onay Bekleyen İstekler ({participants.pending.length})
+                </h2>
+                <div className="space-y-4">
+                  {participants.pending.map((req) => (
+                    <div key={req.id} className="flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700">
+                          <img 
+                            src={getAvatarUrl(req.avatar_seed || req.user_id || req.id)} 
+                            className="w-full h-full object-cover"
+                            alt={req.name}
+                          />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">{req.name}</p>
+                          <p className="text-xs text-gray-500">Seviye: {COMPETITION_LEVELS[req.competition_level]}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          className="!py-1.5 !px-3 bg-emerald-500 hover:bg-emerald-600 border-none"
+                          onClick={() => handleRespond(req.participation_id, 'joined')}
+                          loading={respondingId === req.participation_id}
+                        >
+                          <Check className="w-4 h-4 mr-1" /> Onayla
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="!py-1.5 !px-3"
+                          onClick={() => handleRespond(req.participation_id, 'rejected')}
+                          disabled={respondingId === req.participation_id}
+                        >
+                          <X className="w-4 h-4 mr-1" /> Reddet
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Match Score (if available) */}
             {activity.match_result && (
@@ -326,18 +419,73 @@ export default function ActivityDetailPage() {
               </div>
             )}
 
+            {/* Activity Chat Section */}
+            {(user && (activity.creator_id === user.id || userStatus === 'joined')) && (
+              <div className="mb-8 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-secondary-500" />
+                    Grup Sohbeti
+                  </h2>
+                  <span className="text-[10px] font-bold bg-secondary-500/10 text-secondary-600 dark:text-secondary-400 px-2 py-0.5 rounded-full">
+                    Sadece Katılımcılar
+                  </span>
+                </div>
+                
+                <div className="h-64 overflow-y-auto mb-4 p-4 bg-white dark:bg-gray-900 rounded-xl border border-slate-100 dark:border-slate-800 space-y-3">
+                  {/* Mock messages for demo if none exist */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-secondary-500 ml-1">Sistem</span>
+                    <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl rounded-tl-none text-xs text-slate-600 dark:text-slate-400">
+                      Hoş geldiniz! Etkinlik hakkındaki detayları buradan konuşabilirsiniz.
+                    </div>
+                  </div>
+                  <p className="text-center text-[10px] text-slate-400 py-2">--- Sohbet Başladı ---</p>
+                </div>
+
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="Mesajınızı yazın..." 
+                    className="flex-1 bg-white dark:bg-gray-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-secondary-500 outline-none"
+                  />
+                  <Button variant="secondary" size="sm" className="bg-secondary-500 hover:bg-secondary-600 text-white border-none shadow-glow-purple">
+                    Gönder
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Action buttons */}
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                onClick={handleJoin}
-                disabled={isFull || joining}
-                loading={joining}
-                variant="primary"
-                size="lg"
-                className="flex-1"
-              >
-                {joining ? 'Katılıyor...' : isFull ? 'Aktivite Dolu' : '🎉 Aktiviteye Katıl'}
-              </Button>
+              {user && activity.creator_id === user.id ? (
+                <div className="flex-1 p-4 bg-primary-50 dark:bg-primary-900/10 rounded-xl border border-primary-100 dark:border-primary-800/50 text-center">
+                  <p className="text-sm font-bold text-primary-700 dark:text-primary-300 flex items-center justify-center gap-2">
+                    <UserCheck className="w-5 h-5" />
+                    Bu etkinliği sen yönetiyorsun
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  onClick={handleJoin}
+                  disabled={isFull || joining || userStatus === 'pending' || userStatus === 'joined' || userStatus === 'attended'}
+                  loading={joining}
+                  variant={userStatus === 'joined' ? 'secondary' : 'primary'}
+                  size="lg"
+                  className="flex-1"
+                >
+                  {userStatus === 'joined' || userStatus === 'attended' ? (
+                    <><UserCheck className="w-5 h-5 mr-2" /> Katıldın ✅</>
+                  ) : userStatus === 'pending' ? (
+                    <><Clock className="w-5 h-5 mr-2" /> İstek Gönderildi ⏳</>
+                  ) : isFull ? (
+                    'Aktivite Dolu'
+                  ) : (
+                    <><UserPlus className="w-5 h-5 mr-2" /> 🎉 Aktiviteye Katıl</>
+                  )}
+                </Button>
+              )}
+              
               <Button
                 variant="secondary"
                 size="lg"
