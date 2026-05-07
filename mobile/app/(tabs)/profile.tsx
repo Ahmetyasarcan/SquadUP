@@ -1,35 +1,103 @@
-import React from 'react';
-import { 
-  View, 
-  Text, 
-  SafeAreaView, 
-  StatusBar, 
-  ScrollView, 
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StatusBar,
+  ScrollView,
   TouchableOpacity,
   Alert,
-  StyleSheet
+  StyleSheet,
+  Image,
 } from 'react-native';
-import { useStore } from '../../store/useStore';
-import { logout as apiLogout } from '../../services/api';
-import { UI_TEXT, CATEGORIES } from '../../constants/translations';
-import { COLORS } from '../../constants/colors';
-import { 
-  User as UserIcon, 
-  LogOut, 
-  Settings, 
-  Award, 
-  Calendar, 
+import { getAvatarUrl } from '../../utils/avatars';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter, useFocusEffect } from 'expo-router';
+import {
+  User as UserIcon,
+  LogOut,
+  Settings,
+  Award,
+  Calendar,
   ShieldCheck,
   ChevronRight,
   Heart,
-  Zap
+  Zap,
 } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { CATEGORIES } from '../../constants/translations';
+import { COLORS } from '../../constants/colors';
+
+
+// Profile stats from public.users table (may differ from auth user object)
+interface ProfileStats {
+  name?: string;
+  joined_events: number;
+  attended_events: number;
+  reliability_score: number;
+  interests: string[];
+  badges: string[];
+  avatar_seed?: string;
+}
 
 export default function ProfileScreen() {
-  const { user, setUser } = useStore();
+  const { user, signOut } = useAuth();
   const router = useRouter();
+  const [stats, setStats] = useState<ProfileStats>({
+    name: '',
+    joined_events: 0,
+    attended_events: 0,
+    reliability_score: 0.5,
+    interests: [],
+    badges: [],
+  });
+
+  // Fetch extended profile from public.users table
+  useFocusEffect(
+    React.useCallback(() => {
+    if (!user) {
+      // Mock data for demo if no user is logged in
+      setStats({
+        name: 'Demo Kullanıcı',
+        joined_events: 15,
+        attended_events: 12,
+        reliability_score: 0.95,
+        interests: ['sports', 'esports', 'board_games'],
+        badges: ['active_squadmate', 'verified', 'squad_legend'],
+      });
+      return;
+    }
+    
+    supabase
+      .from('users')
+      .select('name, joined_events, attended_events, reliability_score, interests, badges, avatar_seed')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setStats({
+            name:              data.name              || '',
+            joined_events:     data.joined_events     ?? 0,
+            attended_events:   data.attended_events   ?? 0,
+            reliability_score: data.reliability_score ?? 0.5,
+            interests:         data.interests         ?? [],
+            badges:            data.badges            ?? [],
+            avatar_seed:       data.avatar_seed,
+          });
+        } else {
+          // Mock data for demo if DB is not synced
+          setStats({
+            name: '',
+            joined_events: 15,
+            attended_events: 12,
+            reliability_score: 0.95,
+            interests: ['sports', 'esports', 'board_games'],
+            badges: ['active_squadmate', 'verified', 'squad_legend'],
+          });
+        }
+      });
+  }, [user]));
 
   const handleLogout = () => {
     Alert.alert(
@@ -37,44 +105,65 @@ export default function ProfileScreen() {
       'Oturumunuzu kapatmak istediğinize emin misiniz?',
       [
         { text: 'Vazgeç', style: 'cancel' },
-        { 
-          text: 'Çıkış Yap', 
+        {
+          text: 'Çıkış Yap',
           style: 'destructive',
           onPress: async () => {
-            await apiLogout();
-            setUser(null);
-            router.replace('/(auth)/login');
-          }
+            try {
+              await signOut();
+              router.replace('/(auth)/login');
+            } catch (e) {
+              console.error('Logout error', e);
+            }
+          },
         },
       ]
     );
   };
 
-  if (!user) return null;
+  // Derive display name for demo even if not logged in
+  const displayName = stats?.name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Demo Kullanıcı';
+  const displayEmail = user?.email || 'demo@squadup.com';
+  const avatarLetter = displayName.charAt(0).toUpperCase();
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
-        
+
         {/* Profile Header */}
         <LinearGradient
           colors={[COLORS.darkCard, COLORS.darkBg]}
           style={styles.header}
         >
           <View style={styles.avatarContainer}>
-            <LinearGradient
-              colors={[COLORS.primaryLight, COLORS.secondary]}
-              style={styles.avatarGradient}
-            >
-              <Text style={styles.avatarText}>
-                {user.name.charAt(0).toUpperCase()}
-              </Text>
-            </LinearGradient>
+            <View style={styles.avatarWrapper}>
+              <Image 
+                source={{ uri: getAvatarUrl(stats.avatar_seed || user?.id || 'demo') }} 
+                style={styles.avatarImage} 
+              />
+            </View>
           </View>
-          <Text style={styles.name}>{user.name}</Text>
-          <Text style={styles.email}>{user.email}</Text>
-          
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.email}>{displayEmail}</Text>
+
+          {/* Level & XP System */}
+          <View style={styles.levelContainer}>
+            <View style={styles.levelBadge}>
+              <Zap size={14} color="#fff" fill="#fff" />
+              <Text style={styles.levelText}>Lv. {Math.floor((stats.attended_events || 0) / 5) + 1}</Text>
+            </View>
+            <View style={styles.xpBarContainer}>
+              <View 
+                style={[
+                  styles.xpBarFill, 
+                  { width: `${((stats.attended_events || 0) % 5) * 20}%` }
+                ]} 
+              />
+            </View>
+            <Text style={styles.xpText}>{stats.attended_events % 5} / 5 XP</Text>
+          </View>
+
           <TouchableOpacity style={styles.settingsBtn}>
             <Settings size={24} color={COLORS.textTertiary} />
           </TouchableOpacity>
@@ -87,7 +176,7 @@ export default function ProfileScreen() {
               <View style={[styles.statIcon, { backgroundColor: COLORS.primary + '22' }]}>
                 <Calendar size={20} color={COLORS.primaryLight} />
               </View>
-              <Text style={styles.statValue}>{user.joined_events}</Text>
+              <Text style={styles.statValue}>{stats.joined_events}</Text>
               <Text style={styles.statLabel}>Katıldı</Text>
             </View>
             <View style={styles.statDivider} />
@@ -95,7 +184,7 @@ export default function ProfileScreen() {
               <View style={[styles.statIcon, { backgroundColor: COLORS.secondary + '22' }]}>
                 <Award size={20} color={COLORS.secondary} />
               </View>
-              <Text style={styles.statValue}>{user.attended_events}</Text>
+              <Text style={styles.statValue}>{stats.attended_events}</Text>
               <Text style={styles.statLabel}>Tamamladı</Text>
             </View>
             <View style={styles.statDivider} />
@@ -103,25 +192,25 @@ export default function ProfileScreen() {
               <View style={[styles.statIcon, { backgroundColor: '#10b98122' }]}>
                 <ShieldCheck size={20} color="#10b981" />
               </View>
-              <Text style={styles.statValue}>%{Math.round((user.reliability_score || 0.5) * 100)}</Text>
+              <Text style={styles.statValue}>%{Math.round(stats.reliability_score * 100)}</Text>
               <Text style={styles.statLabel}>Güven</Text>
             </View>
           </View>
         </View>
 
         {/* Badges Section */}
-        {user.badges && user.badges.length > 0 && (
+        {stats.badges && stats.badges.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Zap size={20} color={COLORS.primaryLight} />
               <Text style={styles.sectionTitle}>Kazanılan Rozetler</Text>
             </View>
             <View style={styles.badgesList}>
-              {user.badges.map((badge) => {
-                const badgeData: Record<string, { label: string, color: string, icon: string }> = {
+              {stats.badges.map((badge) => {
+                const badgeData: Record<string, { label: string; color: string; icon: string }> = {
                   active_squadmate: { label: 'Aktif Oyuncu', color: COLORS.primaryLight, icon: '⚡' },
-                  squad_legend: { label: 'Efsane', color: COLORS.secondary, icon: '👑' },
-                  verified: { label: 'Onaylı', color: '#3b82f6', icon: '✔' },
+                  squad_legend:     { label: 'Efsane',       color: COLORS.secondary,    icon: '👑' },
+                  verified:         { label: 'Onaylı',       color: '#3b82f6',           icon: '✔' },
                 };
                 const data = badgeData[badge] || { label: badge, color: COLORS.textTertiary, icon: '⭐' };
                 return (
@@ -135,25 +224,30 @@ export default function ProfileScreen() {
         )}
 
         {/* Interests */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Heart size={20} color="#e11d48" />
-            <Text style={styles.sectionTitle}>İlgi Alanların</Text>
+        {stats.interests && stats.interests.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Heart size={20} color="#e11d48" />
+              <Text style={styles.sectionTitle}>İlgi Alanların</Text>
+            </View>
+            <View style={styles.interestsList}>
+              {stats.interests.map((interest) => (
+                <View key={interest} style={styles.interestTag}>
+                  <Text style={styles.interestText}>
+                    {CATEGORIES[interest as keyof typeof CATEGORIES] || interest}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
-          <View style={styles.interestsList}>
-            {user.interests.map((interest) => (
-              <View key={interest} style={styles.interestTag}>
-                <Text style={styles.interestText}>
-                  {CATEGORIES[interest as keyof typeof CATEGORIES] || interest}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
+        )}
 
         {/* Menu Items */}
         <View style={styles.menuContainer}>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => router.push('/edit-profile')}
+          >
             <View style={styles.menuItemLeft}>
               <View style={styles.menuIconContainer}>
                 <UserIcon size={20} color={COLORS.textPrimary} />
@@ -203,16 +297,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.darkBorder,
     marginBottom: 16,
   },
-  avatarGradient: {
+  avatarWrapper: {
     flex: 1,
     borderRadius: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: COLORS.darkBg,
   },
-  avatarText: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: 'white',
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   name: {
     fontSize: 24,
@@ -372,5 +465,49 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
     marginLeft: 10,
+  },
+  levelContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+    width: '100%',
+    paddingHorizontal: 40,
+  },
+  levelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 6,
+    marginBottom: 8,
+    shadowColor: COLORS.primaryLight,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  levelText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  xpBarContainer: {
+    width: '100%',
+    height: 6,
+    backgroundColor: COLORS.darkBorder,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  xpBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 3,
+  },
+  xpText: {
+    color: COLORS.textTertiary,
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });
